@@ -36,11 +36,6 @@ interface CategoryVote {
   score: number;
 }
 
-interface MyVotes {
-  globalVotes: GlobalVote[];
-  categoryVotes: CategoryVote[];
-}
-
 const categoryConfig = [
   { key: "pubs", label: "Publicités", icon: Ban },
   { key: "facilite", label: "Facilité", icon: MousePointerClick },
