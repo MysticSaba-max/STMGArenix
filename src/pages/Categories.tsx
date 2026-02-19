@@ -1,0 +1,201 @@
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Ban, MousePointerClick, Link as LinkIcon, Library, MonitorPlay, Loader2, Crown, Medal, Award, Star } from "lucide-react";
+
+interface CategoryEntry {
+  id: number;
+  name: string;
+  url: string;
+  logo_path: string;
+  avg_score: number;
+  vote_count: number;
+}
+
+interface CategoryData {
+  [category: string]: CategoryEntry[];
+}
+
+const categories = [
+  { key: "pubs", label: "Publicités", icon: Ban, description: "Moins il y a de pubs, mieux c'est" },
+  { key: "facilite", label: "Facilité", icon: MousePointerClick, description: "Navigation et ergonomie du site" },
+  { key: "liens", label: "Liens", icon: LinkIcon, description: "Fiabilité des liens de streaming" },
+  { key: "catalogue", label: "Catalogue", icon: Library, description: "Variété et richesse du contenu disponible" },
+  { key: "qualite_video", label: "Qualité Vidéo", icon: MonitorPlay, description: "Qualité de l'image et du son" },
+];
+
+function SiteLogo({ site }: { site: { name: string; logo_path: string } }) {
+  const [imgError, setImgError] = useState(false);
+  if (imgError || !site.logo_path) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0">
+        {site.name.charAt(0).toUpperCase()}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={site.logo_path}
+      alt={site.name}
+      className="w-8 h-8 rounded-lg object-cover shrink-0"
+      onError={() => setImgError(true)}
+    />
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  if (rank === 1) {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500/10">
+        <Crown className="w-4 h-4 text-yellow-500" />
+      </div>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-400/10">
+        <Medal className="w-4 h-4 text-gray-400" />
+      </div>
+    );
+  }
+  if (rank === 3) {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-orange-700/10">
+        <Award className="w-4 h-4 text-orange-700" />
+      </div>
+    );
+  }
+  return <span className="text-muted-foreground font-medium w-8 text-center block">{rank}</span>;
+}
+
+function StarDisplay({ score }: { score: number }) {
+  const rounded = Math.round(score * 10) / 10;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Star
+            key={i}
+            className={`w-4 h-4 ${
+              i <= Math.round(score)
+                ? "fill-yellow-500 text-yellow-500"
+                : "text-muted-foreground/30"
+            }`}
+          />
+        ))}
+      </div>
+      <span className="text-sm font-medium">{rounded.toFixed(1)}</span>
+    </div>
+  );
+}
+
+export default function Categories() {
+  const [data, setData] = useState<CategoryData>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getCategoryLeaderboard()
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="container mx-auto px-4 py-12">
+      {/* Page Header */}
+      <div className="mb-10 animate-fade-in-up stagger-1">
+        <h1 className="text-3xl md:text-4xl font-bold">Classement par Catégories</h1>
+        <p className="mt-3 text-muted-foreground max-w-2xl">
+          Comparez les sites de streaming selon différents critères de qualité
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <Tabs defaultValue="pubs" className="animate-fade-in-up stagger-2">
+          <TabsList className="flex flex-wrap h-auto gap-1 mb-6">
+            {categories.map(({ key, label, icon: Icon }) => (
+              <TabsTrigger key={key} value={key} className="flex items-center gap-2 px-4 py-2">
+                <Icon className="w-4 h-4" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {categories.map(({ key, description }) => {
+            const entries = data[key] || [];
+            return (
+              <TabsContent key={key} value={key}>
+                <div className="mb-4">
+                  <p className="text-sm text-muted-foreground">{description}</p>
+                </div>
+                <div className="rounded-xl border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">#</TableHead>
+                        <TableHead>Site</TableHead>
+                        <TableHead>Score Moyen</TableHead>
+                        <TableHead>Nombre de votes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {entries.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                            Aucun vote dans cette catégorie pour le moment
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        entries.map((entry, index) => {
+                          const rank = index + 1;
+                          const rankClass = rank === 1 ? "rank-gold" : rank === 2 ? "rank-silver" : rank === 3 ? "rank-bronze" : "";
+                          return (
+                            <TableRow
+                              key={entry.id}
+                              className={`animate-fade-in-up ${index < 5 ? `stagger-${index + 1}` : ""} ${rank <= 3 ? "bg-muted/30" : ""}`}
+                            >
+                              <TableCell>
+                                <RankBadge rank={rank} />
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <SiteLogo site={entry} />
+                                  <div>
+                                    <span className={`font-semibold ${rankClass}`}>{entry.name}</span>
+                                    <a href={entry.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-muted-foreground hover:text-primary transition-colors">{entry.url}</a>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <StarDisplay score={entry.avg_score} />
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-muted-foreground">{entry.vote_count}</span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+      )}
+    </div>
+  );
+}
