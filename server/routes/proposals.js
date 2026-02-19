@@ -2,14 +2,12 @@ import { Router } from "express";
 import { createHash } from "crypto";
 import multer from "multer";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import pool from "../db/database.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOGOS_DIR = path.resolve(__dirname, "../../public/logos");
+const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
 
 if (!fs.existsSync(LOGOS_DIR)) {
   fs.mkdirSync(LOGOS_DIR, { recursive: true });
