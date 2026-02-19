@@ -118,6 +118,7 @@ export default function VotePage() {
       try {
         const fp = await getFingerprint();
         setFingerprint(fp);
+        api.setFingerprint(fp);
 
         // Skip Turnstile if session cookie already exists
         if (api.hasSession()) {
