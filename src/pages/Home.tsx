@@ -52,25 +52,25 @@ function PodiumCard({ site, rank }: { site: LeaderboardEntry; rank: number }) {
       {rank === 1 && (
         <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/5 to-transparent pointer-events-none" />
       )}
-      <CardContent className="flex flex-col items-center text-center pt-6 gap-4">
+      <CardContent className="flex flex-col items-center text-center pt-4 sm:pt-6 gap-3 sm:gap-4">
         <div className="relative">
-          <SiteLogo site={site} size={rank === 1 ? 80 : 64} />
-          <div className="absolute -top-2 -right-2 flex items-center justify-center w-8 h-8 rounded-full bg-background border-2 shadow-md">
-            <RankIcon className="w-4 h-4" />
+          <SiteLogo site={site} size={rank === 1 ? 64 : 48} />
+          <div className="absolute -top-2 -right-2 flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-background border-2 shadow-md">
+            <RankIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
         </div>
         <div>
-          <span className={`text-2xl font-bold ${rankConfig.colorClass}`}>{rankConfig.label}</span>
-          <h3 className="text-lg font-semibold mt-1">{site.name}</h3>
+          <span className={`text-xl sm:text-2xl font-bold ${rankConfig.colorClass}`}>{rankConfig.label}</span>
+          <h3 className="text-base sm:text-lg font-semibold mt-1">{site.name}</h3>
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-3 sm:gap-4 text-sm">
           <span className="flex items-center gap-1 text-green-500">
-            <TrendingUp className="w-4 h-4" />
+            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {site.upvotes}
           </span>
-          <span className="text-xl font-bold">{site.score}</span>
+          <span className="text-lg sm:text-xl font-bold">{site.score}</span>
           <span className="flex items-center gap-1 text-red-500">
-            <TrendingDown className="w-4 h-4" />
+            <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {site.downvotes}
           </span>
         </div>
@@ -91,23 +91,23 @@ export default function Home() {
   }, []);
 
   const top3 = leaderboard.slice(0, 3);
-  const totalVotes = leaderboard.reduce((sum, s) => sum + s.upvotes + s.downvotes, 0);
+  const totalVotes = leaderboard.reduce((sum, s) => sum + Number(s.upvotes) + Number(s.downvotes), 0);
 
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="relative hero-gradient grain-overlay overflow-hidden">
-        <div className="relative z-10 container mx-auto px-4 py-24 md:py-32 text-center">
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight animate-fade-in-up stagger-1">
+        <div className="relative z-10 container mx-auto px-4 py-16 sm:py-24 md:py-32 text-center">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight animate-fade-in-up stagger-1">
             L'arène du{" "}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               streaming
             </span>
           </h1>
-          <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in-up stagger-2">
+          <p className="mt-4 sm:mt-6 text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in-up stagger-2">
             Votez, comparez et découvrez les meilleurs sites de streaming
           </p>
-          <div className="mt-10 flex flex-wrap justify-center gap-4 animate-fade-in-up stagger-3">
+          <div className="mt-8 sm:mt-10 flex flex-wrap justify-center gap-3 sm:gap-4 animate-fade-in-up stagger-3">
             <Button asChild size="lg" className="text-base px-8">
               <Link to="/leaderboard">
                 <Trophy className="w-5 h-5 mr-2" />
@@ -124,9 +124,9 @@ export default function Home() {
       </section>
 
       {/* Top 3 Podium Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold animate-fade-in-up stagger-1">
+      <section className="container mx-auto px-4 py-10 sm:py-16 md:py-24">
+        <div className="text-center mb-8 sm:mb-12">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold animate-fade-in-up stagger-1">
             Le Podium
           </h2>
           <p className="mt-3 text-muted-foreground animate-fade-in-up stagger-2">
@@ -139,11 +139,11 @@ export default function Home() {
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : top3.length >= 3 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto items-end">
-            <div className="animate-fade-in-up stagger-2 order-2 md:order-1">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-4xl mx-auto items-end">
+            <div className="animate-fade-in-up stagger-2 order-2 sm:order-1">
               <PodiumCard site={top3[1]} rank={2} />
             </div>
-            <div className="animate-fade-in-up stagger-1 order-1 md:order-2">
+            <div className="animate-fade-in-up stagger-1 order-1 sm:order-2">
               <PodiumCard site={top3[0]} rank={1} />
             </div>
             <div className="animate-fade-in-up stagger-3 order-3">

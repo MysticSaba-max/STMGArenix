@@ -109,10 +109,10 @@ export default function Categories() {
   }, []);
 
   return (
-    <div className="container mx-auto px-4 py-12">
+    <div className="container mx-auto px-4 py-6 sm:py-12">
       {/* Page Header */}
-      <div className="mb-10 animate-fade-in-up stagger-1">
-        <h1 className="text-3xl md:text-4xl font-bold">Classement par Catégories</h1>
+      <div className="mb-6 sm:mb-10 animate-fade-in-up stagger-1">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Classement par Catégories</h1>
         <p className="mt-3 text-muted-foreground max-w-2xl">
           Comparez les sites de streaming selon différents critères de qualité
         </p>
@@ -124,14 +124,16 @@ export default function Categories() {
         </div>
       ) : (
         <Tabs defaultValue="pubs" className="animate-fade-in-up stagger-2">
-          <TabsList className="flex flex-wrap h-auto gap-1 mb-6">
-            {categories.map(({ key, label, icon: Icon }) => (
-              <TabsTrigger key={key} value={key} className="flex items-center gap-2 px-4 py-2">
-                <Icon className="w-4 h-4" />
-                {label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 mb-6">
+            <TabsList className="inline-flex h-auto gap-1 w-max">
+              {categories.map(({ key, label, icon: Icon }) => (
+                <TabsTrigger key={key} value={key} className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 text-xs sm:text-sm whitespace-nowrap">
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
           {categories.map(({ key, description }) => {
             const entries = data[key] || [];
@@ -140,11 +142,11 @@ export default function Categories() {
                 <div className="mb-4">
                   <p className="text-sm text-muted-foreground">{description}</p>
                 </div>
-                <div className="rounded-xl border bg-card">
-                  <Table>
+                <div className="rounded-xl border bg-card overflow-x-auto">
+                  <Table className="min-w-[500px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-16">#</TableHead>
+                        <TableHead className="w-14">#</TableHead>
                         <TableHead>Site</TableHead>
                         <TableHead>Score Moyen</TableHead>
                         <TableHead>Nombre de votes</TableHead>
@@ -172,17 +174,17 @@ export default function Categories() {
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <SiteLogo site={entry} />
-                                  <div>
+                                  <div className="min-w-0">
                                     <span className={`font-semibold ${rankClass}`}>{entry.name}</span>
                                     <a href={entry.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-muted-foreground hover:text-primary transition-colors">{entry.url}</a>
                                   </div>
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <StarDisplay score={entry.avg_score} />
+                                <StarDisplay score={Number(entry.avg_score)} />
                               </TableCell>
                               <TableCell>
-                                <span className="text-muted-foreground">{entry.vote_count}</span>
+                                <span className="text-muted-foreground">{Number(entry.vote_count)}</span>
                               </TableCell>
                             </TableRow>
                           );

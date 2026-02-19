@@ -14,7 +14,13 @@ export async function getGlobalLeaderboard() {
     GROUP BY s.id
     ORDER BY score DESC, upvotes DESC
   `);
-  return rows;
+  return rows.map(r => ({
+    ...r,
+    upvotes: Number(r.upvotes),
+    downvotes: Number(r.downvotes),
+    score: Number(r.score),
+    total_votes: Number(r.total_votes),
+  }));
 }
 
 export async function getCategoryLeaderboard(category) {
@@ -28,7 +34,11 @@ export async function getCategoryLeaderboard(category) {
     GROUP BY s.id
     ORDER BY avg_score DESC, vote_count DESC
   `, [category]);
-  return rows;
+  return rows.map(r => ({
+    ...r,
+    avg_score: Number(r.avg_score),
+    vote_count: Number(r.vote_count),
+  }));
 }
 
 export async function getAllCategoriesLeaderboard() {

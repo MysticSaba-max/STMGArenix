@@ -85,11 +85,11 @@ export default function Leaderboard() {
     arr.sort((a, b) => {
       let av: number, bv: number;
       if (sortKey === "total") {
-        av = a.upvotes + a.downvotes;
-        bv = b.upvotes + b.downvotes;
+        av = Number(a.upvotes) + Number(a.downvotes);
+        bv = Number(b.upvotes) + Number(b.downvotes);
       } else {
-        av = a[sortKey];
-        bv = b[sortKey];
+        av = Number(a[sortKey]);
+        bv = Number(b[sortKey]);
       }
       return sortDir === "desc" ? bv - av : av - bv;
     });
@@ -108,7 +108,7 @@ export default function Leaderboard() {
   function SortableHead({ label, sortKeyVal, children }: { label: string; sortKeyVal: SortKey; children?: React.ReactNode }) {
     return (
       <TableHead
-        className="cursor-pointer select-none hover:text-foreground transition-colors"
+        className="cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap"
         onClick={() => toggleSort(sortKeyVal)}
       >
         <div className="flex items-center gap-1">
@@ -121,10 +121,10 @@ export default function Leaderboard() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-12">
+    <div className="container mx-auto px-4 py-6 sm:py-12">
       {/* Page Header */}
-      <div className="mb-10 animate-fade-in-up stagger-1">
-        <h1 className="text-3xl md:text-4xl font-bold">Classement Global</h1>
+      <div className="mb-6 sm:mb-10 animate-fade-in-up stagger-1">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Classement Global</h1>
         <p className="mt-3 text-muted-foreground max-w-2xl">
           Le classement de tous les sites de streaming basé sur les votes de la communauté
         </p>
@@ -135,29 +135,20 @@ export default function Leaderboard() {
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : (
-        <div className="rounded-xl border bg-card animate-fade-in-up stagger-2">
-          <Table>
+        <div className="rounded-xl border bg-card animate-fade-in-up stagger-2 overflow-x-auto">
+          <Table className="min-w-[600px]">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-16">#</TableHead>
+                <TableHead className="w-14">#</TableHead>
                 <TableHead>Site</TableHead>
                 <SortableHead label="Score" sortKeyVal="score" />
                 <SortableHead label="Upvotes" sortKeyVal="upvotes">
                   <ThumbsUp className="w-3 h-3 text-green-500" />
                 </SortableHead>
-                <TableHead className="hidden md:table-cell">
-                  <div className="flex items-center gap-1 cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("downvotes")}>
-                    <ThumbsDown className="w-3 h-3 text-red-500" />
-                    Downvotes
-                    <ArrowUpDown className={`w-3 h-3 ${sortKey === "downvotes" ? "text-primary" : "text-muted-foreground/50"}`} />
-                  </div>
-                </TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  <div className="flex items-center gap-1 cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => toggleSort("total")}>
-                    Total
-                    <ArrowUpDown className={`w-3 h-3 ${sortKey === "total" ? "text-primary" : "text-muted-foreground/50"}`} />
-                  </div>
-                </TableHead>
+                <SortableHead label="Downvotes" sortKeyVal="downvotes">
+                  <ThumbsDown className="w-3 h-3 text-red-500" />
+                </SortableHead>
+                <SortableHead label="Total" sortKeyVal="total" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -175,25 +166,25 @@ export default function Leaderboard() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <SiteLogo site={site} />
-                        <div>
+                        <div className="min-w-0">
                           <div className={`font-semibold ${rankClass}`}>{site.name}</div>
                           <a href={site.url} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-primary transition-colors">{site.url}</a>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className={`font-bold text-lg ${site.score > 0 ? "text-green-500" : site.score < 0 ? "text-red-500" : "text-muted-foreground"}`}>
-                        {site.score > 0 ? "+" : ""}{site.score}
+                      <span className={`font-bold text-lg ${Number(site.score) > 0 ? "text-green-500" : Number(site.score) < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                        {Number(site.score) > 0 ? "+" : ""}{Number(site.score)}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-green-500 font-medium">{site.upvotes}</span>
+                      <span className="text-green-500 font-medium">{Number(site.upvotes)}</span>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <span className="text-red-500 font-medium">{site.downvotes}</span>
+                    <TableCell>
+                      <span className="text-red-500 font-medium">{Number(site.downvotes)}</span>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <span className="text-muted-foreground">{site.upvotes + site.downvotes}</span>
+                    <TableCell>
+                      <span className="text-muted-foreground">{Number(site.upvotes) + Number(site.downvotes)}</span>
                     </TableCell>
                   </TableRow>
                 );

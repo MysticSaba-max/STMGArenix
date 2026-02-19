@@ -30,9 +30,9 @@ export async function initDatabase() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       site_id INT NOT NULL,
       fingerprint VARCHAR(255) NOT NULL,
+      ip_hash VARCHAR(255) DEFAULT NULL,
       vote_type ENUM('up', 'down') NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY unique_vote (site_id, fingerprint),
       FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
     )
   `);
@@ -43,9 +43,9 @@ export async function initDatabase() {
       site_id INT NOT NULL,
       category ENUM('pubs', 'facilite', 'liens', 'catalogue', 'qualite_video') NOT NULL,
       fingerprint VARCHAR(255) NOT NULL,
+      ip_hash VARCHAR(255) DEFAULT NULL,
       score INT NOT NULL CHECK(score BETWEEN 1 AND 5),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY unique_cat_vote (site_id, category, fingerprint),
       FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
     )
   `);
@@ -58,6 +58,24 @@ export async function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Add ip_hash column if it doesn't exist (migration for existing tables)
+  try {
+    await pool.execute("ALTER TABLE votes ADD COLUMN ip_hash VARCHAR(255) DEFAULT NULL");
+  } catch { /* column already exists */ }
+
+  try {
+    await pool.execute("ALTER TABLE category_votes ADD COLUMN ip_hash VARCHAR(255) DEFAULT NULL");
+  } catch { /* column already exists */ }
+
+  // Drop old unique constraints that only used fingerprint
+  try {
+    await pool.execute("ALTER TABLE votes DROP INDEX unique_vote");
+  } catch { /* already dropped */ }
+
+  try {
+    await pool.execute("ALTER TABLE category_votes DROP INDEX unique_cat_vote");
+  } catch { /* already dropped */ }
 
   console.log("Database tables initialized.");
 }

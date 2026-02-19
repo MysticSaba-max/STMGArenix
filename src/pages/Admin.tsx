@@ -261,15 +261,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   return (
-    <div className="container mx-auto px-4 py-12">
+    <div className="container mx-auto px-4 py-6 sm:py-12">
       {/* Header */}
-      <div className="flex items-center justify-between mb-10 animate-fade-in-up stagger-1">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
-            <Shield className="w-8 h-8 text-primary" />
-            Panel Admin
-          </h1>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10 animate-fade-in-up stagger-1">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold flex items-center gap-2 sm:gap-3">
+          <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-primary shrink-0" />
+          Panel Admin
+        </h1>
         <Button
           variant="outline"
           onClick={() => {
@@ -277,7 +275,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             toast.success("Déconnexion réussie");
             onLogout();
           }}
-          className="gap-2"
+          className="gap-2 self-start sm:self-auto"
         >
           <LogOut className="w-4 h-4" />
           Déconnexion
@@ -326,14 +324,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       {/* Sites Management */}
       <div className="mb-10 animate-fade-in-up stagger-3">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Gestion des sites</h2>
-          <Button onClick={openCreateDialog} className="gap-2">
+          <h2 className="text-lg sm:text-xl font-bold">Gestion des sites</h2>
+          <Button onClick={openCreateDialog} size="sm" className="gap-2">
             <Plus className="w-4 h-4" />
-            Ajouter un site
+            <span className="hidden sm:inline">Ajouter un site</span>
+            <span className="sm:hidden">Ajouter</span>
           </Button>
         </div>
-        <div className="rounded-xl border bg-card">
-          <Table>
+        <div className="rounded-xl border bg-card overflow-x-auto">
+          <Table className="min-w-[600px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">Logo</TableHead>
@@ -349,13 +348,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <TableCell>
                     <SiteLogo site={site} />
                   </TableCell>
-                  <TableCell className="font-medium">{site.name}</TableCell>
+                  <TableCell className="font-medium whitespace-nowrap">{site.name}</TableCell>
                   <TableCell>
-                    <a href={site.url} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                    <a href={site.url} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-primary transition-colors whitespace-nowrap">
                       {site.url}
                     </a>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{site.logo_path}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{site.logo_path}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="icon-sm" onClick={() => openEditDialog(site)}>
@@ -375,34 +374,34 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       {/* Score Adjustment */}
       <div className="animate-fade-in-up stagger-4">
-        <h2 className="text-xl font-bold mb-4">Ajustement des scores</h2>
-        <div className="rounded-xl border bg-card">
+        <h2 className="text-lg sm:text-xl font-bold mb-4">Ajustement des scores</h2>
+        <div className="rounded-xl border bg-card overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Site</TableHead>
                 <TableHead>Ajustement</TableHead>
-                <TableHead className="w-32"></TableHead>
+                <TableHead className="w-24 sm:w-32"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sites.map((site) => (
                 <TableRow key={site.id}>
                   <TableCell>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                       <SiteLogo site={site} />
-                      <span className="font-medium">{site.name}</span>
+                      <span className="font-medium text-sm sm:text-base">{site.name}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Input
                       type="number"
-                      placeholder="ex: 5 ou -3"
+                      placeholder="ex: 5"
                       value={scoreAdjustments[site.id] || ""}
                       onChange={(e) =>
                         setScoreAdjustments((prev) => ({ ...prev, [site.id]: e.target.value }))
                       }
-                      className="w-32"
+                      className="w-20 sm:w-32"
                     />
                   </TableCell>
                   <TableCell>

@@ -17,11 +17,15 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Trust proxy for correct IP behind Cloudflare/nginx
+app.set("trust proxy", 1);
+
 const voteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 
 app.use("/api/votes", voteLimiter);

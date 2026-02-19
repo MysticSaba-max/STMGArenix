@@ -9,9 +9,9 @@ router.get("/stats", requireAdmin, async (_req, res) => {
   const [votesRows] = await pool.execute("SELECT COUNT(*) as count FROM votes");
   const [catRows] = await pool.execute("SELECT COUNT(*) as count FROM category_votes");
 
-  const totalSites = sitesRows[0].count;
-  const totalVotes = votesRows[0].count;
-  const totalCategoryVotes = catRows[0].count;
+  const totalSites = Number(sitesRows[0].count);
+  const totalVotes = Number(votesRows[0].count);
+  const totalCategoryVotes = Number(catRows[0].count);
 
   const [recentVotes] = await pool.execute(`
     SELECT v.*, s.name as site_name

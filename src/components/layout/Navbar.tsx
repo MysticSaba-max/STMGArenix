@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
-import { Tv, Trophy, Star, Vote, Shield, Menu } from "lucide-react";
+import { Tv, Trophy, Star, Vote, Menu } from "lucide-react";
 import {
   Sheet,
   SheetTrigger,
@@ -60,14 +60,6 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
 
-          <Link
-            to="/admin"
-            className="hidden md:flex items-center gap-1 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">Admin</span>
-          </Link>
-
           {/* Mobile hamburger menu */}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -105,20 +97,6 @@ export function Navbar() {
                   </button>
                 ))}
 
-                <div className="my-2 border-t border-border/40" />
-
-                <button
-                  onClick={() => handleMobileNav("/admin")}
-                  className={cn(
-                    "flex items-center gap-3 w-full px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
-                    location.pathname === "/admin"
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}
-                >
-                  <Shield className="h-5 w-5" />
-                  Admin
-                </button>
               </nav>
 
               <div className="mt-auto border-t border-border/40 p-4">
