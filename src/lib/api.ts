@@ -1,9 +1,11 @@
 import { getTurnstileToken } from "./turnstile";
+import { collectBotSignals, computeBotScore } from "./botDetection";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const SESSION_COOKIE = "vote_session";
 
 let cachedFingerprint: string | null = null;
+let cachedBotScore = 0;
 
 function getSessionToken(): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${SESSION_COOKIE}=([^;]*)`));
@@ -20,17 +22,26 @@ function clearSessionToken() {
 }
 
 function isSessionError(message: string): boolean {
-  return message.includes("Session invalide") || message.includes("Session expirée") || message.includes("Session non vérifiée");
+  return (
+    message.includes("Session invalide") ||
+    message.includes("Session expirée") ||
+    message.includes("Session non vérifiée")
+  );
 }
 
 async function renewSession(): Promise<boolean> {
   if (!cachedFingerprint) return false;
   try {
-    const turnstileToken = await getTurnstileToken();
+    const [turnstileToken, botSignals] = await Promise.all([
+      getTurnstileToken(),
+      collectBotSignals(),
+    ]);
+    cachedBotScore = computeBotScore(botSignals);
+
     const res = await fetch(`${API_BASE}/votes/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: turnstileToken, fingerprint: cachedFingerprint }),
+      body: JSON.stringify({ token: turnstileToken, fingerprint: cachedFingerprint, botSignals }),
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -49,6 +60,7 @@ async function request<T>(path: string, options?: RequestInit, _retry = false): 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "x-bot-score": String(cachedBotScore),
   };
 
   const session = getSessionToken();
@@ -90,19 +102,24 @@ export const api = {
   deleteSite: (id: number) =>
     request<void>(`/sites/${id}`, { method: "DELETE" }),
 
-  // Check if already verified (cookie exists)
   hasSession: () => !!getSessionToken(),
+  setFingerprint: (fp: string) => {
+    cachedFingerprint = fp;
+  },
 
-  // Store fingerprint for session auto-renewal
-  setFingerprint: (fp: string) => { cachedFingerprint = fp; },
-
-  // One-time Turnstile verification (tied to fingerprint)
+  // Vérification Turnstile + envoi des signaux bot au serveur
   verifyTurnstile: async (fingerprint: string) => {
     cachedFingerprint = fingerprint;
-    const turnstileToken = await getTurnstileToken();
+
+    const [turnstileToken, botSignals] = await Promise.all([
+      getTurnstileToken(),
+      collectBotSignals(),
+    ]);
+    cachedBotScore = computeBotScore(botSignals);
+
     const result = await request<{ sessionToken: string }>("/votes/verify", {
       method: "POST",
-      body: JSON.stringify({ token: turnstileToken, fingerprint }),
+      body: JSON.stringify({ token: turnstileToken, fingerprint, botSignals }),
     });
     setSessionToken(result.sessionToken);
     return result;
@@ -110,15 +127,50 @@ export const api = {
 
   vote: (data: { site_id: number; vote_type: string; fingerprint: string }) =>
     request<any>("/votes", { method: "POST", body: JSON.stringify(data) }),
-  voteCategories: (data: { site_id: number; ratings: Record<string, number>; fingerprint: string }) =>
-    request<any>("/votes/categories", { method: "POST", body: JSON.stringify(data) }),
+  voteCategories: (data: {
+    site_id: number;
+    ratings: Record<string, number>;
+    fingerprint: string;
+  }) => request<any>("/votes/categories", { method: "POST", body: JSON.stringify(data) }),
   getMyVotes: (fingerprint: string) =>
     request<any>("/votes/mine", { method: "POST", body: JSON.stringify({ fingerprint }) }),
   getLeaderboard: () => request<any[]>("/leaderboard"),
   getCategoryLeaderboard: () => request<any>("/leaderboard/categories"),
   login: (username: string, password: string) =>
-    request<{ token: string }>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+    request<{ token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
   getStats: () => request<any>("/admin/stats"),
   adjustScores: (id: number, data: { upvoteAdjust: number }) =>
     request<any>(`/admin/scores/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  // Upload de logo (multipart/form-data — ne passe pas par request())
+  uploadLogo: async (file: File): Promise<{ path: string }> => {
+    const token = localStorage.getItem("admin_token");
+    const formData = new FormData();
+    formData.append("logo", file);
+    const res = await fetch(`${API_BASE}/upload/logo`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Upload échoué" }));
+      throw new Error(err.error || "Upload échoué");
+    }
+    return res.json();
+  },
+
+  // Gestion des comptes admin
+  getAdmins: () => request<any[]>("/admin/admins"),
+  createAdmin: (username: string, password: string) =>
+    request<any>("/admin/admins", { method: "POST", body: JSON.stringify({ username, password }) }),
+  deleteAdmin: (id: number) =>
+    request<any>(`/admin/admins/${id}`, { method: "DELETE" }),
+  changeAdminPassword: (id: number, newPassword: string) =>
+    request<any>(`/admin/admins/${id}/password`, {
+      method: "PUT",
+      body: JSON.stringify({ newPassword }),
+    }),
 };

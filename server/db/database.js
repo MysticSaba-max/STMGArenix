@@ -59,6 +59,33 @@ export async function initDatabase() {
     )
   `);
 
+  // Table des tentatives suspectes / activité bot
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS bot_attempts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      ip_hash VARCHAR(255) NOT NULL,
+      reason VARCHAR(100) NOT NULL,
+      bot_score INT DEFAULT 0,
+      user_agent TEXT DEFAULT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_ip_hash (ip_hash),
+      INDEX idx_created_at (created_at)
+    )
+  `);
+
+  // Table cache de réputation IP (VPN/proxy)
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS ip_reputation_cache (
+      ip_hash VARCHAR(255) PRIMARY KEY,
+      is_proxy TINYINT(1) DEFAULT 0,
+      is_vpn TINYINT(1) DEFAULT 0,
+      is_tor TINYINT(1) DEFAULT 0,
+      country_code VARCHAR(5) DEFAULT NULL,
+      checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_checked_at (checked_at)
+    )
+  `);
+
   // Add ip_hash column if it doesn't exist (migration for existing tables)
   try {
     await pool.execute("ALTER TABLE votes ADD COLUMN ip_hash VARCHAR(255) DEFAULT NULL");
@@ -76,6 +103,20 @@ export async function initDatabase() {
   try {
     await pool.execute("ALTER TABLE category_votes DROP INDEX unique_cat_vote");
   } catch { /* already dropped */ }
+
+  // Nettoyage des vieilles entrées bot_attempts (> 30 jours)
+  try {
+    await pool.execute(
+      "DELETE FROM bot_attempts WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    );
+  } catch { /* ignore */ }
+
+  // Nettoyage du cache IP > 24h
+  try {
+    await pool.execute(
+      "DELETE FROM ip_reputation_cache WHERE checked_at < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+    );
+  } catch { /* ignore */ }
 
   console.log("Database tables initialized.");
 }
