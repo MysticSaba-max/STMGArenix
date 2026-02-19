@@ -62,7 +62,6 @@ export function requireVerifiedSession(req, res, next) {
 
   try {
     const payload = jwt.verify(token, SESSION_SECRET);
-    const currentIp = req.ip || req.socket.remoteAddress || "";
 
     if (!payload.verified) {
       res.status(403).json({ error: "Session invalide" });
@@ -72,12 +71,6 @@ export function requireVerifiedSession(req, res, next) {
     // Verify fingerprint matches
     if (payload.fingerprint && req.body.fingerprint && payload.fingerprint !== req.body.fingerprint) {
       res.status(403).json({ error: "Session invalide pour cet appareil" });
-      return;
-    }
-
-    // Verify IP matches
-    if (payload.ip && payload.ip !== currentIp) {
-      res.status(403).json({ error: "Session invalide pour cette connexion" });
       return;
     }
 
