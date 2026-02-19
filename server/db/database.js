@@ -104,6 +104,22 @@ export async function initDatabase() {
     await pool.execute("ALTER TABLE category_votes DROP INDEX unique_cat_vote");
   } catch { /* already dropped */ }
 
+  // Table des propositions de sites
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS site_proposals (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      url VARCHAR(500) NOT NULL,
+      logo_path VARCHAR(500) DEFAULT '',
+      ip_hash VARCHAR(64) NOT NULL,
+      status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
+      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME DEFAULT NULL,
+      INDEX idx_proposal_ip (ip_hash),
+      INDEX idx_proposal_status (status)
+    )
+  `);
+
   // Nettoyage des vieilles entrées bot_attempts (> 30 jours)
   try {
     await pool.execute(

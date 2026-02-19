@@ -13,6 +13,7 @@ import adminRoutes from "./routes/admin.js";
 import uploadRoutes from "./routes/upload.js";
 import { detectBot, requireLowBotScore } from "./middleware/antibot.js";
 import { blockVpnProxy } from "./middleware/vpn.js";
+import proposalsRoutes from "./routes/proposals.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,7 +35,7 @@ app.use((_req, res, next) => {
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http://ip-api.com;"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self';"
   );
   next();
 });
@@ -139,6 +140,7 @@ app.use("/api/votes", votesRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/upload", uploadLimiter, uploadRoutes);
+app.use("/api/proposals", proposalsRoutes);
 
 // ─── 404 par défaut ──────────────────────────────────────────────────────────
 app.use((_req, res) => {

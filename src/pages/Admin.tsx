@@ -35,6 +35,8 @@ import {
   X,
   Key,
   UserPlus,
+  Check,
+  PlusCircle,
 } from "lucide-react";
 
 interface Site {
@@ -48,6 +50,16 @@ interface AdminAccount {
   id: number;
   username: string;
   created_at: string;
+}
+
+interface Proposal {
+  id: number;
+  name: string;
+  url: string;
+  logo_path: string;
+  status: "pending" | "accepted" | "rejected";
+  submitted_at: string;
+  reviewed_at: string | null;
 }
 
 interface Stats {
@@ -245,6 +257,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [proposalFilter, setProposalFilter] = useState<string>("pending");
+  const [proposalActionLoading, setProposalActionLoading] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
 
   // ID de l'admin connecté (depuis le JWT)
@@ -280,6 +295,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [newPw, setNewPw] = useState("");
   const [pwLoading, setPwLoading] = useState(false);
 
+  const fetchProposals = useCallback(async (status: string) => {
+    try {
+      const data = await api.getProposals(status === "all" ? undefined : status);
+      setProposals(data);
+    } catch { /* silently ignore */ }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const [statsData, sitesData, adminsData] = await Promise.all([
@@ -290,6 +312,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setStats(statsData);
       setSites(sitesData);
       setAdmins(adminsData);
+      await fetchProposals("pending");
     } catch (err: any) {
       const msg: string = err.message || "";
       if (msg.includes("401") || msg.includes("Unauthorized") || msg.includes("token")) {
@@ -305,6 +328,30 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }, [onLogout]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  async function handleProposalAction(id: number, action: "accept" | "reject") {
+    setProposalActionLoading((prev) => ({ ...prev, [id]: true }));
+    try {
+      if (action === "accept") {
+        await api.acceptProposal(id);
+        toast.success("Proposition acceptée et site ajouté !");
+        fetchData();
+      } else {
+        await api.rejectProposal(id);
+        toast.success("Proposition refusée.");
+      }
+      fetchProposals(proposalFilter);
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors du traitement");
+    } finally {
+      setProposalActionLoading((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  async function handleProposalFilterChange(status: string) {
+    setProposalFilter(status);
+    await fetchProposals(status);
+  }
 
   // ── Handlers site ──
   function openCreateDialog() {
@@ -540,6 +587,149 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </TableBody>
           </Table>
         </div>
+      </div>
+
+      {/* Propositions de sites */}
+      <div className="mb-10 animate-fade-in-up stagger-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+            <PlusCircle className="w-5 h-5 text-primary" />
+            Propositions de sites
+            {proposals.filter((p) => p.status === "pending").length > 0 && proposalFilter !== "pending" && (
+              <span className="ml-1 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
+                {proposals.filter((p) => p.status === "pending").length}
+              </span>
+            )}
+          </h2>
+          {/* Filtres */}
+          <div className="flex items-center gap-1 text-sm">
+            {(["pending", "accepted", "rejected"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => handleProposalFilterChange(s)}
+                className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                  proposalFilter === s
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                {s === "pending" ? "En attente" : s === "accepted" ? "Acceptées" : "Refusées"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {proposals.length === 0 ? (
+          <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground text-sm">
+            {proposalFilter === "pending"
+              ? "Aucune proposition en attente."
+              : proposalFilter === "accepted"
+              ? "Aucune proposition acceptée."
+              : "Aucune proposition refusée."}
+          </div>
+        ) : (
+          <div className="rounded-xl border bg-card overflow-x-auto">
+            <Table className="min-w-[640px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-14">Icône</TableHead>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>URL</TableHead>
+                  <TableHead>Soumis le</TableHead>
+                  {proposalFilter === "pending" && (
+                    <TableHead className="text-right w-44">Actions</TableHead>
+                  )}
+                  {proposalFilter !== "pending" && (
+                    <TableHead className="w-28">Statut</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {proposals.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      {p.logo_path ? (
+                        <img
+                          src={p.logo_path}
+                          alt={p.name}
+                          className="w-9 h-9 rounded-lg object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center font-bold text-xs text-primary">
+                          {p.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">{p.name}</TableCell>
+                    <TableCell>
+                      <a
+                        href={p.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-muted-foreground hover:text-primary transition-colors whitespace-nowrap"
+                      >
+                        {p.url.length > 40 ? p.url.slice(0, 40) + "…" : p.url}
+                      </a>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {new Date(p.submitted_at).toLocaleDateString("fr-FR")}
+                    </TableCell>
+                    {proposalFilter === "pending" && (
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-green-600 border-green-600/30 hover:bg-green-600/10 hover:text-green-600"
+                            disabled={proposalActionLoading[p.id]}
+                            onClick={() => handleProposalAction(p.id, "accept")}
+                          >
+                            {proposalActionLoading[p.id] ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            Accepter
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1.5 text-destructive hover:text-destructive"
+                            disabled={proposalActionLoading[p.id]}
+                            onClick={() => handleProposalAction(p.id, "reject")}
+                          >
+                            {proposalActionLoading[p.id] ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <X className="w-3 h-3" />
+                            )}
+                            Refuser
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                    {proposalFilter !== "pending" && (
+                      <TableCell>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            p.status === "accepted"
+                              ? "bg-green-500/10 text-green-600"
+                              : "bg-destructive/10 text-destructive"
+                          }`}
+                        >
+                          {p.status === "accepted" ? "Acceptée" : "Refusée"}
+                        </span>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
 
       {/* Gestion des comptes admins */}

@@ -1,10 +1,28 @@
 import { createHash } from "crypto";
 
-// In-memory cache : ipHash -> { result, timestamp }
+// ─── API keys vpnapi.io (rotation à chaque requête) ──────────────────────────
+const VPN_API_KEYS = [
+  "b46fd4dfdffd46eeb7922935a8da52a3",
+  "cfde14be7e104e54933e50b17b99817f",
+  "f980c8f6f4ce4f41886cbcd3282a54f4",
+];
+let currentKeyIndex = 0;
+
+function getNextApiKey() {
+  const key = VPN_API_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % VPN_API_KEYS.length;
+  return key;
+}
+
+// ─── Cache in-memory : ipHash -> { result, timestamp } ───────────────────────
 const ipCache = new Map();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
 
-// IPs locales / réseaux privés à ignorer
+// ─── Compteur de blocages par IP (sécurité supplémentaire) ────────────────────
+const blockCount = new Map(); // ipHash -> count
+const BLOCK_COUNT_TTL = 7 * 24 * 60 * 60 * 1000; // 7 jours
+
+// ─── Réseaux privés / locaux à ignorer ───────────────────────────────────────
 const LOCAL_RANGES = [
   /^127\./,
   /^::1$/,
@@ -20,102 +38,142 @@ function isLocalIp(ip) {
   return LOCAL_RANGES.some((r) => r.test(ip));
 }
 
+// Normalise les adresses IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4)
+function normalizeIp(ip) {
+  if (!ip) return "";
+  const v4mapped = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+  if (v4mapped) return v4mapped[1];
+  return ip.trim();
+}
+
 function hashIp(ip) {
   return createHash("sha256").update(ip).digest("hex");
 }
 
 async function checkIpReputation(ip) {
-  if (isLocalIp(ip)) {
-    return { isProxy: false, isVpn: false, isTor: false, isBad: false };
+  const normalized = normalizeIp(ip);
+  if (!normalized || isLocalIp(normalized)) {
+    return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
   }
 
-  const ipHash = hashIp(ip);
+  const ipHash = hashIp(normalized);
+
+  // Vérification du cache (évite les requêtes inutiles avec la limite 1000/jour)
   const cached = ipCache.get(ipHash);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.result;
   }
 
   try {
+    const apiKey = getNextApiKey();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(
-      `http://ip-api.com/json/${ip}?fields=status,proxy,hosting,tor,mobile,countryCode`,
+      `https://vpnapi.io/api/${encodeURIComponent(normalized)}?key=${apiKey}`,
       { signal: controller.signal }
     );
     clearTimeout(timeout);
 
+    // Rate limit atteint sur cette clé → on laisse passer mais on log
+    if (response.status === 429) {
+      console.warn(`[VPN] Clé API #${((currentKeyIndex - 1 + VPN_API_KEYS.length) % VPN_API_KEYS.length) + 1} rate-limitée (429)`);
+      return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
+    }
+
     if (!response.ok) {
-      return { isProxy: false, isVpn: false, isTor: false, isBad: false };
+      return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
     }
 
     const data = await response.json();
-
-    if (data.status !== "success") {
-      return { isProxy: false, isVpn: false, isTor: false, isBad: false };
-    }
+    const sec = data.security || {};
 
     const result = {
-      isProxy: data.proxy === true,
-      isVpn: data.hosting === true,
-      isTor: data.tor === true,
-      isBad: data.proxy === true || data.tor === true,
-      country: data.countryCode || null,
+      isVpn: sec.vpn === true,
+      isProxy: sec.proxy === true,
+      isTor: sec.tor === true,
+      isRelay: sec.relay === true,
+      isBad: sec.vpn === true || sec.proxy === true || sec.tor === true || sec.relay === true,
+      country: data.location?.country_code || null,
+      asn: data.network?.autonomous_system_number || null,
     };
 
+    // Mise en cache 24h
     ipCache.set(ipHash, { result, timestamp: Date.now() });
     return result;
   } catch {
-    // Si l'API est indisponible, on laisse passer
-    return { isProxy: false, isVpn: false, isTor: false, isBad: false };
+    // API indisponible → laisser passer (fail-open)
+    return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
   }
 }
 
 export async function blockVpnProxy(req, res, next) {
-  // Désactivé en dev local (pas de clé Turnstile configurée)
+  // Désactivé en développement (pas de clé Turnstile configurée)
   if (!process.env.TURNSTILE_SECRET_KEY) {
     return next();
   }
 
-  const ip = req.ip || req.socket?.remoteAddress || "";
+  const rawIp = req.ip || req.socket?.remoteAddress || "";
+  const ip = normalizeIp(rawIp);
 
   try {
     const rep = await checkIpReputation(ip);
 
+    if (rep.isBad) {
+      // Incrémenter le compteur de blocages pour cet IP
+      const ipHash = hashIp(normalizeIp(ip));
+      const entry = blockCount.get(ipHash) || { count: 0, timestamp: Date.now() };
+      entry.count += 1;
+      entry.timestamp = Date.now();
+      blockCount.set(ipHash, entry);
+    }
+
     if (rep.isTor) {
       return res.status(403).json({
-        error: "Accès refusé : réseau Tor détecté.",
+        error: "Accès refusé : réseau Tor détecté. Désactivez Tor pour voter.",
         code: "TOR_DETECTED",
+      });
+    }
+
+    if (rep.isRelay) {
+      return res.status(403).json({
+        error: "Accès refusé : relay privé détecté (iCloud Private Relay, etc.). Désactivez-le pour voter.",
+        code: "RELAY_DETECTED",
       });
     }
 
     if (rep.isProxy) {
       return res.status(403).json({
-        error: "Accès refusé : proxy/VPN détecté. Désactivez votre VPN pour voter.",
-        code: "VPN_PROXY_DETECTED",
+        error: "Accès refusé : proxy détecté. Désactivez votre proxy pour voter.",
+        code: "PROXY_DETECTED",
       });
     }
 
-    // Hosting / datacenter = probablement un bot en cloud
     if (rep.isVpn) {
       return res.status(403).json({
-        error: "Accès refusé : IP de datacenter détectée.",
-        code: "DATACENTER_IP",
+        error: "Accès refusé : VPN détecté. Désactivez votre VPN pour voter.",
+        code: "VPN_DETECTED",
       });
     }
 
     next();
   } catch {
+    // Fail-open : si le middleware plante, on laisse passer
     next();
   }
 }
 
-// Nettoyage périodique du cache (toutes les heures)
+// ─── Nettoyage périodique du cache (toutes les heures) ────────────────────────
 setInterval(() => {
   const now = Date.now();
   for (const [key, val] of ipCache.entries()) {
     if (now - val.timestamp > CACHE_TTL) {
       ipCache.delete(key);
+    }
+  }
+  for (const [key, val] of blockCount.entries()) {
+    if (now - val.timestamp > BLOCK_COUNT_TTL) {
+      blockCount.delete(key);
     }
   }
 }, 60 * 60 * 1000);

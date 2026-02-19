@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
-import { Tv, Trophy, Star, Vote, Menu } from "lucide-react";
+import { Tv, Trophy, Star, Vote, Menu, PlusCircle } from "lucide-react";
 import {
   Sheet,
   SheetTrigger,
@@ -16,6 +16,7 @@ const navLinks = [
   { to: "/leaderboard", label: "Classement", icon: Trophy },
   { to: "/categories", label: "Catégories", icon: Star },
   { to: "/vote", label: "Voter", icon: Vote },
+  { to: "/propose", label: "Proposer", icon: PlusCircle },
 ];
 
 export function Navbar() {

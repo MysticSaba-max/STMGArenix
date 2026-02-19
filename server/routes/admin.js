@@ -1,4 +1,7 @@
 import { Router } from "express";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 import { requireAdmin } from "../middleware/auth.js";
 import pool from "../db/database.js";
 import {
@@ -8,6 +11,9 @@ import {
   changeAdminPassword,
 } from "../services/auth.service.js";
 import rateLimit from "express-rate-limit";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOGOS_DIR = path.resolve(__dirname, "../../public/logos");
 
 const router = Router();
 
@@ -112,6 +118,94 @@ router.put("/admins/:id/password", requireAdmin, adminMgmtLimiter, async (req, r
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Propositions de sites ────────────────────────────────────────────────────
+
+// GET /api/admin/proposals — lister les propositions (filtrables par status)
+router.get("/proposals", requireAdmin, async (req, res) => {
+  const status = req.query.status;
+  const allowed = ["pending", "accepted", "rejected"];
+  try {
+    let rows;
+    if (status && allowed.includes(status)) {
+      [rows] = await pool.execute(
+        "SELECT * FROM site_proposals WHERE status = ? ORDER BY submitted_at DESC",
+        [status]
+      );
+    } else {
+      [rows] = await pool.execute(
+        "SELECT * FROM site_proposals ORDER BY submitted_at DESC"
+      );
+    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+// PUT /api/admin/proposals/:id/accept — accepter une proposition (crée le site)
+router.put("/proposals/:id/accept", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "ID invalide." });
+  try {
+    const [rows] = await pool.execute("SELECT * FROM site_proposals WHERE id = ?", [id]);
+    if (!rows.length) return res.status(404).json({ error: "Proposition introuvable." });
+
+    const proposal = rows[0];
+    if (proposal.status !== "pending") {
+      return res.status(400).json({ error: "Cette proposition a déjà été traitée." });
+    }
+
+    // Créer le site depuis la proposition
+    await pool.execute(
+      "INSERT INTO sites (name, url, logo_path) VALUES (?, ?, ?)",
+      [proposal.name, proposal.url, proposal.logo_path]
+    );
+
+    // Marquer comme acceptée
+    await pool.execute(
+      "UPDATE site_proposals SET status = 'accepted', reviewed_at = NOW() WHERE id = ?",
+      [id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+// PUT /api/admin/proposals/:id/reject — rejeter une proposition
+router.put("/proposals/:id/reject", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "ID invalide." });
+  try {
+    const [rows] = await pool.execute("SELECT * FROM site_proposals WHERE id = ?", [id]);
+    if (!rows.length) return res.status(404).json({ error: "Proposition introuvable." });
+
+    const proposal = rows[0];
+    if (proposal.status !== "pending") {
+      return res.status(400).json({ error: "Cette proposition a déjà été traitée." });
+    }
+
+    await pool.execute(
+      "UPDATE site_proposals SET status = 'rejected', reviewed_at = NOW() WHERE id = ?",
+      [id]
+    );
+
+    // Supprimer le logo uploadé pour libérer l'espace
+    if (proposal.logo_path && proposal.logo_path.startsWith("/logos/")) {
+      const filename = path.basename(proposal.logo_path);
+      const filePath = path.join(LOGOS_DIR, filename);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
   }
 });
 

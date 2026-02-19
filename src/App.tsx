@@ -7,6 +7,7 @@ import Leaderboard from "@/pages/Leaderboard";
 import Categories from "@/pages/Categories";
 import VotePage from "@/pages/Vote";
 import Admin from "@/pages/Admin";
+import ProposePage from "@/pages/Propose";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
               <Route path="/categories" element={<Categories />} />
               <Route path="/vote" element={<VotePage />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/propose" element={<ProposePage />} />
             </Routes>
           </main>
           <Toaster richColors position="bottom-right" />

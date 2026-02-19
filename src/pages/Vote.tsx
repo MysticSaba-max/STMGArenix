@@ -17,6 +17,7 @@ import {
   Library,
   MonitorPlay,
   Check,
+  ShieldX,
 } from "lucide-react";
 
 interface Site {
@@ -106,6 +107,7 @@ export default function VotePage() {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
+  const [blockError, setBlockError] = useState<{ message: string; code: string } | null>(null);
   const [fingerprint, setFingerprint] = useState("");
   const [globalVotes, setGlobalVotes] = useState<Record<number, "up" | "down">>({});
   const [categoryVotes, setCategoryVotes] = useState<Record<string, number>>({});
@@ -152,13 +154,23 @@ export default function VotePage() {
         setCategoryVotes(cv);
         setPendingCategoryVotes(cv);
         setSubmittedSites(alreadySubmitted);
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
         setVerifying(false);
-        if (!verified) {
-          toast.error("La vérification a échoué, veuillez réessayer");
+        const SECURITY_CODES = [
+          "VPN_DETECTED",
+          "PROXY_DETECTED",
+          "TOR_DETECTED",
+          "RELAY_DETECTED",
+          "DATACENTER_IP",
+          "VPN_PROXY_DETECTED",
+        ];
+        if (err.code && SECURITY_CODES.includes(err.code)) {
+          setBlockError({ message: err.message, code: err.code });
+        } else if (!verified) {
+          toast.error(err.message || "La vérification a échoué, veuillez réessayer");
         } else {
-          toast.error("Erreur lors du chargement des données");
+          toast.error(err.message || "Erreur lors du chargement des données");
         }
       } finally {
         setLoading(false);
@@ -233,6 +245,22 @@ export default function VotePage() {
     },
     [fingerprint, pendingCategoryVotes, votingInProgress]
   );
+
+  if (blockError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4 text-center px-4">
+        <ShieldX className="w-14 h-14 text-destructive" />
+        <h2 className="text-xl font-bold">Accès restreint</h2>
+        <p className="text-sm text-muted-foreground max-w-md">{blockError.message}</p>
+        <p className="text-xs text-muted-foreground max-w-md">
+          Si vous pensez qu'il s'agit d'une erreur, désactivez votre VPN / proxy et réessayez.
+        </p>
+        <Button variant="outline" onClick={() => window.location.reload()}>
+          Réessayer
+        </Button>
+      </div>
+    );
+  }
 
   if (verifying || loading) {
     return (

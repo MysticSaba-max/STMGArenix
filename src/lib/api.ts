@@ -86,7 +86,9 @@ async function request<T>(path: string, options?: RequestInit, _retry = false): 
       }
     }
 
-    throw new Error(errorMsg);
+    const err = new Error(errorMsg) as Error & { code?: string };
+    if (error.code) err.code = error.code;
+    throw err;
   }
 
   if (res.status === 204) return undefined as T;
@@ -161,6 +163,31 @@ export const api = {
     }
     return res.json();
   },
+
+  // Propositions de sites
+  submitProposal: (data: { name: string; url: string; logo_path: string }) =>
+    request<{ success: boolean }>("/proposals", { method: "POST", body: JSON.stringify(data) }),
+
+  uploadProposalLogo: async (file: File): Promise<{ path: string }> => {
+    const formData = new FormData();
+    formData.append("logo", file);
+    const res = await fetch(`${API_BASE}/proposals/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Upload échoué" }));
+      throw new Error(err.error || "Upload échoué");
+    }
+    return res.json();
+  },
+
+  getProposals: (status?: string) =>
+    request<any[]>(`/admin/proposals${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  acceptProposal: (id: number) =>
+    request<{ success: boolean }>(`/admin/proposals/${id}/accept`, { method: "PUT" }),
+  rejectProposal: (id: number) =>
+    request<{ success: boolean }>(`/admin/proposals/${id}/reject`, { method: "PUT" }),
 
   // Gestion des comptes admin
   getAdmins: () => request<any[]>("/admin/admins"),
