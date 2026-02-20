@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Ban, MousePointerClick, Link as LinkIcon, Library, MonitorPlay, Loader2, Crown, Medal, Award, Star, Search } from "lucide-react";
+import { Ban, MousePointerClick, Link as LinkIcon, Library, MonitorPlay, Loader2, Crown, Medal, Award, Star, Search, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 interface CategoryEntry {
@@ -107,9 +107,23 @@ export default function Categories() {
     keywords: "streaming sans pub, streaming qualité HD, meilleur catalogue streaming, site streaming fiable, streaming sans publicité, comparatif qualité streaming, streaming liens fiables, site streaming facile",
   });
 
+  type CatSortKey = "avg_score" | "vote_count";
+  type SortDir = "asc" | "desc";
+
   const [data, setData] = useState<CategoryData>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState<CatSortKey>("avg_score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(key: CatSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
 
   useEffect(() => {
     api.getCategoryLeaderboard()
@@ -160,9 +174,15 @@ export default function Categories() {
           </div>
 
           {categories.map(({ key, description }) => {
-            const entries = (data[key] || []).filter((entry) =>
-              entry.name.toLowerCase().includes(searchQuery.toLowerCase())
-            );
+            const entries = (data[key] || [])
+              .filter((entry) =>
+                entry.name.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .sort((a, b) => {
+                const av = Number(a[sortKey]);
+                const bv = Number(b[sortKey]);
+                return sortDir === "desc" ? bv - av : av - bv;
+              });
             return (
               <TabsContent key={key} value={key}>
                 <div className="mb-4">
@@ -174,8 +194,24 @@ export default function Categories() {
                       <TableRow>
                         <TableHead className="w-14">#</TableHead>
                         <TableHead>Site</TableHead>
-                        <TableHead>Score Moyen</TableHead>
-                        <TableHead>Nombre de votes</TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap"
+                          onClick={() => toggleSort("avg_score")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Score Moyen
+                            <ArrowUpDown className={`w-3 h-3 ${sortKey === "avg_score" ? "text-primary" : "text-muted-foreground/50"}`} />
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap"
+                          onClick={() => toggleSort("vote_count")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Nombre de votes
+                            <ArrowUpDown className={`w-3 h-3 ${sortKey === "vote_count" ? "text-primary" : "text-muted-foreground/50"}`} />
+                          </div>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
