@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
+import { useSEO } from "@/hooks/useSEO";
 import { getFingerprint } from "@/lib/fingerprint";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -142,6 +143,13 @@ function StarRating({
 }
 
 export default function VotePage() {
+  useSEO({
+    title: "Voter pour les Meilleurs Sites de Streaming",
+    description: "Votez pour vos sites de streaming préférés ! Upvote ou downvote et notez chaque site selon 5 critères : publicités, facilité, liens, catalogue et qualité vidéo. Votre avis compte.",
+    canonical: "/vote",
+    keywords: "voter streaming, avis site streaming, noter site streaming, meilleur streaming vote, évaluer streaming, avis streaming gratuit",
+  });
+
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
   // verifying = vérification Turnstile encore en cours (n'est plus un bloqueur de rendu)

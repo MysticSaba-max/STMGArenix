@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { api } from "@/lib/api";
+import { useSEO } from "@/hooks/useSEO";
 import {
   Table,
   TableBody,
@@ -68,6 +69,13 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 export default function Leaderboard() {
+  useSEO({
+    title: "Classement des Sites de Streaming - Top Sites Streaming 2026",
+    description: "Classement complet des meilleurs sites de streaming gratuit basé sur les votes de la communauté. Comparez les scores, upvotes et downvotes pour trouver le site de streaming idéal.",
+    canonical: "/leaderboard",
+    keywords: "classement streaming, top site streaming, meilleur site streaming 2026, comparatif site streaming, site streaming gratuit classement, streaming fiable, streaming populaire",
+  });
+
   const [data, setData] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("score");

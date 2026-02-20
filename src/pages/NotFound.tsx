@@ -1,8 +1,14 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Home, ArrowLeft, Search } from "lucide-react";
+import { useSEO } from "@/hooks/useSEO";
 
 export default function NotFound() {
+  useSEO({
+    title: "Page introuvable - Erreur 404",
+    description: "La page que vous recherchez n'existe pas ou a été déplacée. Retournez à l'accueil de STMGArenix pour découvrir le classement des meilleurs sites de streaming.",
+  });
+
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 relative overflow-hidden">
       {/* Background decoration */}

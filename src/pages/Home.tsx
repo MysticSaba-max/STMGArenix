@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, TrendingUp, TrendingDown, Crown, Medal, Award, Loader2, BarChart3, Users } from "lucide-react";
@@ -80,6 +81,13 @@ function PodiumCard({ site, rank }: { site: LeaderboardEntry; rank: number }) {
 }
 
 export default function Home() {
+  useSEO({
+    title: "Classement des Meilleurs Sites de Streaming Gratuit 2026",
+    description: "Découvrez le classement des meilleurs sites de streaming gratuit en 2026. Votez, comparez et trouvez les sites de streaming les plus fiables pour regarder films et séries en ligne gratuitement.",
+    canonical: "/",
+    keywords: "meilleur site de streaming, site de streaming gratuit, streaming gratuit, film streaming, série streaming, comparatif streaming, top streaming 2026, regarder film en ligne, streaming sans inscription, streaming HD, streaming VOSTFR",
+  });
+
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -180,6 +188,58 @@ export default function Home() {
               <div className="text-3xl font-bold">5</div>
               <div className="text-sm text-muted-foreground mt-1">Catégories évaluées</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SEO Content Section */}
+      <section className="container mx-auto px-4 py-12 sm:py-16">
+        <div className="max-w-3xl mx-auto space-y-8">
+          <div className="scroll-reveal">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-4">
+              Trouvez le meilleur site de streaming gratuit
+            </h2>
+            <p className="text-muted-foreground leading-relaxed">
+              STMGArenix est la plateforme communautaire de référence pour comparer et classer les
+              <strong> meilleurs sites de streaming gratuit</strong> en {new Date().getFullYear()}.
+              Que vous cherchiez un <strong>site de streaming sans pub</strong>, un site avec un
+              <strong> large catalogue de films et séries</strong>, ou simplement le
+              <strong> streaming le plus fiable</strong> avec des liens qui fonctionnent, notre classement
+              mis à jour en temps réel vous aide à trouver la perle rare.
+            </p>
+          </div>
+
+          <div className="scroll-reveal">
+            <h3 className="text-xl font-semibold mb-3">Comment fonctionne le classement ?</h3>
+            <p className="text-muted-foreground leading-relaxed">
+              Notre classement repose entièrement sur les <strong>votes de la communauté</strong>.
+              Chaque utilisateur peut voter pour ou contre un site, et noter les sites selon
+              <strong> 5 catégories</strong> : quantité de publicités, facilité d'utilisation, fiabilité des liens,
+              richesse du catalogue et qualité vidéo. Plus un site reçoit de votes positifs, plus il monte
+              dans le classement.
+            </p>
+          </div>
+
+          <div className="scroll-reveal">
+            <h3 className="text-xl font-semibold mb-3">Pourquoi utiliser STMGArenix ?</h3>
+            <ul className="text-muted-foreground space-y-2">
+              <li className="flex gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>Classement en temps réel</strong> — Les scores sont mis à jour à chaque vote</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>Avis communautaires</strong> — Basé sur les vrais retours des utilisateurs, pas des classements sponsorisés</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>5 critères détaillés</strong> — Pubs, facilité, liens, catalogue et qualité vidéo</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>Proposez vos sites</strong> — La communauté enrichit le classement en continu</span>
+              </li>
+            </ul>
           </div>
         </div>
       </section>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useSEO } from "@/hooks/useSEO";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -99,6 +100,13 @@ function StarDisplay({ score }: { score: number }) {
 }
 
 export default function Categories() {
+  useSEO({
+    title: "Comparatif Streaming par Catégorie - Pubs, Qualité, Catalogue",
+    description: "Comparez les sites de streaming par catégorie : publicités, facilité d'utilisation, fiabilité des liens, richesse du catalogue et qualité vidéo. Trouvez le site de streaming sans pub avec le meilleur catalogue.",
+    canonical: "/categories",
+    keywords: "streaming sans pub, streaming qualité HD, meilleur catalogue streaming, site streaming fiable, streaming sans publicité, comparatif qualité streaming, streaming liens fiables, site streaming facile",
+  });
+
   const [data, setData] = useState<CategoryData>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");

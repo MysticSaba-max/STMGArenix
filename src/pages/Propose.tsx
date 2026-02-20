@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { useSEO } from "@/hooks/useSEO";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -136,6 +137,13 @@ function LogoUploader({
 
 // ─── Page principale ───────────────────────────────────────────────────────────
 export default function ProposePage() {
+  useSEO({
+    title: "Proposer un Site de Streaming",
+    description: "Proposez un nouveau site de streaming à ajouter au classement STMGArenix. Signalez un changement d'URL ou suggérez un site manquant. La communauté vote, vous proposez !",
+    canonical: "/propose",
+    keywords: "proposer site streaming, ajouter site streaming, signaler site streaming, nouveau site streaming",
+  });
+
   // ── Proposition nouveau site ──
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
