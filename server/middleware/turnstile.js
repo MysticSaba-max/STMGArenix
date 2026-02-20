@@ -121,39 +121,72 @@ export function requireVerifiedSession(req, res, next) {
   }
 }
 
-// ─── Calcul serveur du score bot (vérification des signaux clients) ──────────
+// ─── Calcul serveur du score bot (re-vérifie les signaux clients) ────────────
+// Calibré pour le Turnstile invisible : le verify peut être déclenché avant
+// toute interaction utilisateur (chargement automatique). On NE pénalise PAS
+// l'absence d'interaction < 5 secondes après le chargement.
 function computeServerSideBotScore(signals) {
   let score = 0;
 
+  // ── Indicateurs définitifs d'automatisation ──
   if (signals.webdriver === true) score += 100;
   if (signals.phantom === true) score += 100;
   if (signals.selenium === true) score += 100;
   if (signals.automationFlags === true) score += 90;
   if (signals.headless === true) score += 80;
 
-  // Comportement
-  if (
-    signals.mouseMovements === 0 &&
-    signals.clickCount === 0 &&
-    signals.touchCount === 0
-  ) score += 30;
+  // ── Timing ──
+  // Un utilisateur réel peut déclencher le verify en 400–800ms après chargement.
+  // On ne pénalise que les cas véritablement impossibles sans script.
+  const tsl = Number(signals.timeSinceLoad) || 0;
+  if (tsl < 300) score += 50;       // Quasi-impossible humainement
+  else if (tsl < 600) score += 20;  // Très rapide mais possible sur machine rapide
 
-  const timeSinceLoad = Number(signals.timeSinceLoad) || 0;
-  if (timeSinceLoad < 500) score += 40;
-  else if (timeSinceLoad < 1500) score += 15;
+  // ── Absence d'interaction : UNIQUEMENT si la page est ouverte depuis > 5s ──
+  // Le Turnstile invisible se déclenche avant toute interaction — c'est NORMAL.
+  const noInteraction =
+    Number(signals.mouseMovements) === 0 &&
+    Number(signals.clickCount) === 0 &&
+    Number(signals.touchCount) === 0;
+  if (noInteraction && tsl > 9000) score += 35;
+  else if (noInteraction && tsl > 5000) score += 20;
+  // < 5s : aucune pénalité, le Turnstile peut s'exécuter automatiquement
 
-  // Navigateur
+  // ── Environnement navigateur : signaux non-ambigus ──
   const browser = signals.browser || {};
-  if (!browser.languages) score += 20;
+  if (!browser.languages) score += 20;           // Impossible dans un vrai navigateur
   if (!browser.timezone) score += 15;
   if (browser.hardwareConcurrency === 0) score += 15;
-  if (browser.plugins === 0 && !browser.touchSupport) score += 15;
+  if (browser.osConsistent === false) score += 20; // Incohérence OS détectée côté client
 
-  // Canvas / WebGL
-  if (!signals.canvasFp || signals.canvasFp === "no-canvas" || signals.canvasFp === "canvas-error") {
+  // SUPPRIMÉ : plugins === 0 — Firefox 94+ expose 0 plugins sur desktop,
+  // ce qui causait des faux positifs systématiques pour les utilisateurs Firefox.
+
+  // ── Canvas / WebGL absents (headless ou sandboxé) ──
+  if (!signals.canvasFp || signals.canvasFp === "no-canvas") score += 25;
+  if (!signals.webglFp || signals.webglFp === "no-webgl") score += 20;
+
+  // ── Biométrie comportementale (nouveaux signaux v2) ──
+  // Ces checks ne s'activent que si suffisamment de données sont présentes,
+  // ce qui évite les faux positifs lors des vérifications précoces.
+
+  // Vitesse souris suspicieusement uniforme (bots Puppeteer à vitesse constante)
+  const mouseCV = Number(signals.mouseVelocityCV);
+  if (!isNaN(mouseCV) && mouseCV >= 0 && mouseCV < 0.15 && Number(signals.mouseMovements) >= 15) {
     score += 25;
   }
-  if (!signals.webglFp || signals.webglFp === "no-webgl") score += 20;
+
+  // Trajectoire souris trop rectiligne (bots qui simulent le mouvement)
+  const straightRatio = Number(signals.mouseStraightRatio);
+  if (!isNaN(straightRatio) && straightRatio >= 0 && straightRatio > 0.88 && Number(signals.mouseMovements) >= 20) {
+    score += 20;
+  }
+
+  // Frappe clavier trop uniforme (bots scriptant la saisie de formulaires)
+  const keystrokeCV = Number(signals.keystrokeCV);
+  if (!isNaN(keystrokeCV) && keystrokeCV >= 0 && keystrokeCV < 0.10 && Number(signals.keystrokes) >= 7) {
+    score += 25;
+  }
 
   return Math.min(score, 200);
 }

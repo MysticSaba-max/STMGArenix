@@ -1,70 +1,103 @@
 // ─── Détection de bots côté navigateur ───────────────────────────────────────
-// Analyse multi-couche : webdriver, canvas, WebGL, audio, comportement souris/clavier
+// Analyse invisible multi-couche : biométrie comportementale, empreintes,
+// cohérence navigateur/OS, détection des outils d'automatisation.
 
+// ─── État global de tracking ──────────────────────────────────────────────────
 let pageLoadTime = Date.now();
+
+// Souris
 let mouseMovements = 0;
 let mouseDistance = 0;
 let lastMouseX = 0;
 let lastMouseY = 0;
+
+interface MouseSample { x: number; y: number; t: number; }
+const mouseSamples: MouseSample[] = [];
+const MAX_MOUSE_SAMPLES = 200;
+
+// Clavier
 let keystrokes = 0;
+const keystrokeIntervals: number[] = [];
+let lastKeystrokeTime = 0;
+
+// Autres interactions
 let scrollCount = 0;
-let hasInteracted = false;
-let firstInteractionDelay: number | null = null;
 let clickCount = 0;
 let touchCount = 0;
+let contextMenuCount = 0;
+let pasteCount = 0;
+let focusCount = 0;
 
-// ─── Tracking comportemental ─────────────────────────────────────────────────
+// Délai jusqu'à la première interaction
+let hasInteracted = false;
+let firstInteractionDelay: number | null = null;
+
+// Protection contre les listeners doublons (React StrictMode)
+let initialized = false;
+
+// ─── Handlers d'événements ────────────────────────────────────────────────────
+function markInteraction() {
+  if (!hasInteracted) {
+    hasInteracted = true;
+    firstInteractionDelay = Date.now() - pageLoadTime;
+  }
+}
+
 function onMouseMove(e: MouseEvent) {
+  const now = Date.now();
   mouseMovements++;
   const dx = e.clientX - lastMouseX;
   const dy = e.clientY - lastMouseY;
   mouseDistance += Math.sqrt(dx * dx + dy * dy);
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
-  if (!hasInteracted) {
-    hasInteracted = true;
-    firstInteractionDelay = Date.now() - pageLoadTime;
+
+  // Stocker un échantillon toutes les ~16ms (≈ 60 fps)
+  if (mouseSamples.length === 0 || now - mouseSamples[mouseSamples.length - 1].t >= 16) {
+    mouseSamples.push({ x: e.clientX, y: e.clientY, t: now });
+    if (mouseSamples.length > MAX_MOUSE_SAMPLES) mouseSamples.shift();
   }
+  markInteraction();
 }
 
 function onKeyDown() {
+  const now = Date.now();
   keystrokes++;
-  if (!hasInteracted) {
-    hasInteracted = true;
-    firstInteractionDelay = Date.now() - pageLoadTime;
+  if (lastKeystrokeTime > 0) {
+    const interval = now - lastKeystrokeTime;
+    // Intervalles réalistes : 20ms – 3s
+    if (interval >= 20 && interval <= 3000) {
+      keystrokeIntervals.push(interval);
+      if (keystrokeIntervals.length > 60) keystrokeIntervals.shift();
+    }
   }
+  lastKeystrokeTime = now;
+  markInteraction();
 }
 
-function onScroll() {
-  scrollCount++;
-}
-
-function onClick() {
-  clickCount++;
-  if (!hasInteracted) {
-    hasInteracted = true;
-    firstInteractionDelay = Date.now() - pageLoadTime;
-  }
-}
-
-function onTouch() {
-  touchCount++;
-  if (!hasInteracted) {
-    hasInteracted = true;
-    firstInteractionDelay = Date.now() - pageLoadTime;
-  }
-}
+function onScroll() { scrollCount++; }
+function onClick() { clickCount++; markInteraction(); }
+function onTouch() { touchCount++; markInteraction(); }
+function onContextMenu() { contextMenuCount++; }
+function onPaste() { pasteCount++; }
+function onFocusCapture() { focusCount++; }
 
 export function initBotDetection() {
+  if (initialized) return;
+  initialized = true;
   pageLoadTime = Date.now();
+
   document.addEventListener("mousemove", onMouseMove, { passive: true });
   document.addEventListener("keydown", onKeyDown, { passive: true });
   document.addEventListener("scroll", onScroll, { passive: true });
   document.addEventListener("click", onClick, { passive: true });
   document.addEventListener("touchstart", onTouch, { passive: true });
+  document.addEventListener("contextmenu", onContextMenu, { passive: true });
+  document.addEventListener("paste", onPaste, { passive: true });
+  document.addEventListener("focus", onFocusCapture, { passive: true, capture: true });
 }
 
-// ─── Détection webdriver / Selenium / Phantom ────────────────────────────────
+// ─── Détection des outils d'automatisation ────────────────────────────────────
 function detectWebDriver(): boolean {
   return navigator.webdriver === true;
 }
@@ -78,41 +111,29 @@ function detectSelenium(): boolean {
   const w = window as any;
   const d = document as any;
   return !!(
-    w.__selenium_evaluate ||
-    w.__selenium_unwrapped ||
-    w.__fxdriver_evaluate ||
-    w.__driver_evaluate ||
-    w.__webdriver_evaluate ||
-    w.Selenium ||
-    w.selenium ||
-    w.callSelenium ||
-    w._selenium ||
-    w.__nightmarejs ||
-    d.__selenium_evaluate ||
-    d.__webdriver_evaluate ||
-    d.__fxdriver_evaluate ||
-    d.__driver_evaluate ||
-    d.__driver_unwrapped ||
-    d.__webdriver_unwrapped ||
-    d.__fxdriver_unwrapped
+    w.__selenium_evaluate || w.__selenium_unwrapped ||
+    w.__fxdriver_evaluate || w.__driver_evaluate ||
+    w.__webdriver_evaluate || w.Selenium || w.selenium ||
+    w.callSelenium || w._selenium || w.__nightmarejs ||
+    d.__selenium_evaluate || d.__webdriver_evaluate ||
+    d.__fxdriver_evaluate || d.__driver_evaluate ||
+    d.__driver_unwrapped || d.__webdriver_unwrapped || d.__fxdriver_unwrapped
   );
 }
 
 function detectHeadlessChrome(): boolean {
   const ua = navigator.userAgent || "";
+
+  // UA explicitement headless
   if (/HeadlessChrome/i.test(ua)) return true;
+  if (/puppeteer|playwright/i.test(ua)) return true;
 
-  // Chrome sans plugins = suspect (sauf mobile)
-  if (
-    /Chrome/i.test(ua) &&
-    !("ontouchstart" in window) &&
-    navigator.plugins.length === 0
-  ) {
-    return true;
-  }
+  // Plugins = 0 UNIQUEMENT pour Chrome réel (pas Firefox, pas Edge, pas Opera)
+  // Firefox expose 0 plugins depuis Firefox 94+ pour la vie privée — ce n'est PAS un indicateur de bot.
+  const isChrome = /Chrome\//i.test(ua) && !/Firefox|Edg\/|OPR\/|SamsungBrowser/i.test(ua);
+  if (isChrome && navigator.plugins.length === 0 && !("ontouchstart" in window)) return true;
 
-  // Vérification des propriétés manquantes en headless
-  if (typeof (window as any).outerWidth === "undefined") return true;
+  // outerWidth = 0 en mode headless
   if (window.outerWidth === 0 && window.outerHeight === 0) return true;
 
   return false;
@@ -121,9 +142,8 @@ function detectHeadlessChrome(): boolean {
 function detectAutomationFlags(): boolean {
   const w = window as any;
   return !!(
-    w.domAutomation ||
-    w.domAutomationController ||
-    w.__cdc_asdjflasutopfhvcZLmcfl_ || // old Chrome flag
+    w.domAutomation || w.domAutomationController ||
+    w.__cdc_asdjflasutopfhvcZLmcfl_ ||
     w.__selenium_unwrapped ||
     document.documentElement.getAttribute("webdriver") !== null
   );
@@ -133,21 +153,19 @@ function detectAutomationFlags(): boolean {
 function getCanvasFingerprint(): string {
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = 200;
-    canvas.height = 50;
+    canvas.width = 220; canvas.height = 60;
     const ctx = canvas.getContext("2d");
     if (!ctx) return "no-canvas";
 
     ctx.textBaseline = "top";
-    ctx.font = "14px 'Arial'";
+    ctx.font = "14px Arial";
     ctx.fillStyle = "#f60";
     ctx.fillRect(125, 1, 62, 20);
     ctx.fillStyle = "#069";
-    ctx.fillText("Sécurité 🔒", 2, 15);
-    ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-    ctx.fillText("Sécurité 🔒", 4, 17);
+    ctx.fillText("Sécurité 🔒 1Gg", 2, 15);
+    ctx.fillStyle = "rgba(102,204,0,0.7)";
+    ctx.fillText("Sécurité 🔒 1Gg", 4, 17);
 
-    // Opérations graphiques supplémentaires
     ctx.globalCompositeOperation = "multiply";
     ctx.fillStyle = "rgb(255,0,255)";
     ctx.beginPath();
@@ -155,9 +173,13 @@ function getCanvasFingerprint(): string {
     ctx.closePath();
     ctx.fill();
 
-    const data = canvas.toDataURL();
-    // Utiliser les derniers 80 caractères comme empreinte
-    return data.slice(-80);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.beginPath();
+    ctx.arc(80, 20, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,255,0.5)";
+    ctx.fill();
+
+    return canvas.toDataURL().slice(-100);
   } catch {
     return "canvas-error";
   }
@@ -174,71 +196,108 @@ function getWebGLFingerprint(): string {
     const renderer = gl.getParameter(gl.RENDERER) as string;
     const vendor = gl.getParameter(gl.VENDOR) as string;
     const version = gl.getParameter(gl.VERSION) as string;
-
-    // Extensions disponibles
     const exts = gl.getSupportedExtensions() || [];
-    const extCount = exts.length;
 
-    return `${vendor}|${renderer}|${version.slice(0, 30)}|${extCount}`;
+    return `${vendor}|${renderer}|${version.slice(0, 30)}|${exts.length}`;
   } catch {
     return "webgl-error";
   }
 }
 
-// ─── Audio fingerprint ────────────────────────────────────────────────────────
-async function getAudioFingerprint(): Promise<string> {
+// ─── Audio fingerprint (métadonnées seulement — pas d'oscillateur) ────────────
+// On évite d'appeler oscillator.start() pour ne pas déclencher les restrictions
+// d'autoplay du navigateur (ex: Firefox) et les warnings dans la console.
+function getAudioFingerprint(): string {
   try {
-    const AudioCtx =
-      window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return "no-audio-api";
 
     const ctx = new AudioCtx();
-    const oscillator = ctx.createOscillator();
-    const analyser = ctx.createAnalyser();
-    const gain = ctx.createGain();
-
-    analyser.fftSize = 512;
-    gain.gain.value = 0; // Silencieux
-
-    oscillator.type = "triangle";
-    oscillator.frequency.value = 10000;
-
-    oscillator.connect(analyser);
-    analyser.connect(gain);
-    gain.connect(ctx.destination);
-
-    oscillator.start(0);
-
-    return await new Promise<string>((resolve) => {
-      const buffer = new Float32Array(analyser.frequencyBinCount);
-      const timeout = setTimeout(() => {
-        try {
-          oscillator.stop();
-          ctx.close();
-        } catch {}
-        resolve("audio-timeout");
-      }, 1500);
-
-      requestAnimationFrame(() => {
-        analyser.getFloatFrequencyData(buffer);
-        let sum = 0;
-        for (let i = 0; i < buffer.length; i++) {
-          sum += Math.abs(buffer[i]);
-        }
-        clearTimeout(timeout);
-        try {
-          oscillator.stop();
-          ctx.close();
-        } catch {}
-        resolve(sum.toFixed(6));
-      });
-    });
+    const fp = `${ctx.sampleRate}|${ctx.destination.maxChannelCount}|${ctx.destination.channelCount}`;
+    ctx.close().catch(() => {});
+    return fp;
   } catch {
     return "audio-error";
   }
 }
 
-// ─── Vérifications navigateur supplémentaires ────────────────────────────────
+// ─── Biométrie comportementale ────────────────────────────────────────────────
+
+// Coefficient de variation = σ / μ (valeur faible = vitesse trop uniforme = bot)
+function coefficientOfVariation(values: number[]): number {
+  if (values.length < 4) return -1;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  if (mean < 0.001) return 0;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance) / mean;
+}
+
+// CV des vitesses de déplacement souris (px/ms)
+function computeMouseVelocityCV(): number {
+  if (mouseSamples.length < 12) return -1;
+  const velocities: number[] = [];
+  for (let i = 1; i < mouseSamples.length; i++) {
+    const dt = mouseSamples[i].t - mouseSamples[i - 1].t;
+    if (dt > 0 && dt < 150) {
+      const dx = mouseSamples[i].x - mouseSamples[i - 1].x;
+      const dy = mouseSamples[i].y - mouseSamples[i - 1].y;
+      velocities.push(Math.sqrt(dx * dx + dy * dy) / dt);
+    }
+  }
+  return coefficientOfVariation(velocities);
+}
+
+// Ratio de segments de souris parfaitement rectilignes (bots = trajectoires droites)
+function computeMouseStraightRatio(): number {
+  if (mouseSamples.length < 18) return -1;
+
+  const WIN = Math.min(10, Math.floor(mouseSamples.length / 4));
+  let segments = 0;
+  let straight = 0;
+
+  for (let i = 0; i + WIN < mouseSamples.length; i += Math.max(1, WIN >> 1)) {
+    const start = mouseSamples[i];
+    const end = mouseSamples[i + WIN];
+    const directDist = Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2);
+    if (directDist < 6) continue;
+
+    let pathDist = 0;
+    for (let j = i; j < i + WIN; j++) {
+      const ddx = mouseSamples[j + 1].x - mouseSamples[j].x;
+      const ddy = mouseSamples[j + 1].y - mouseSamples[j].y;
+      pathDist += Math.sqrt(ddx * ddx + ddy * ddy);
+    }
+    segments++;
+    if (pathDist > 0 && directDist / pathDist > 0.97) straight++;
+  }
+
+  return segments > 0 ? straight / segments : -1;
+}
+
+// CV des intervalles de frappe clavier (frappe trop uniforme = bot)
+function computeKeystrokeCV(): number {
+  return coefficientOfVariation(keystrokeIntervals);
+}
+
+// ─── Cohérence OS / navigateur ────────────────────────────────────────────────
+function checkOsConsistency(): boolean {
+  const ua = navigator.userAgent || "";
+  const platform = (navigator as any).platform || "";
+
+  // iPhone UA avec grande résolution desktop et sans touch = incohérent
+  if (/iPhone/i.test(ua) && screen.width > 1600 && (navigator.maxTouchPoints || 0) === 0) return false;
+
+  // Platform OS vs UA OS : contradiction grossière
+  if (/Win/i.test(platform) && /Macintosh/i.test(ua) && !/Intel Mac/i.test(ua)) return false;
+  if (/MacIntel|MacPPC/i.test(platform) && /Windows NT/i.test(ua)) return false;
+
+  // Languages vide = navigateur non-standard ou scripté
+  if (!navigator.languages || navigator.languages.length === 0) return false;
+
+  return true;
+}
+
+// ─── Environnement navigateur ─────────────────────────────────────────────────
 function getBrowserChecks() {
   const nav = navigator as any;
   return {
@@ -246,58 +305,74 @@ function getBrowserChecks() {
     languages: nav.languages?.join(",") || nav.language || "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
+    windowSize: `${window.outerWidth}x${window.outerHeight}`,
     platform: nav.platform || "",
     hardwareConcurrency: nav.hardwareConcurrency || 0,
     deviceMemory: nav.deviceMemory || 0,
     touchSupport: "ontouchstart" in window || nav.maxTouchPoints > 0,
+    maxTouchPoints: nav.maxTouchPoints || 0,
     cookiesEnabled: nav.cookieEnabled,
     doNotTrack: nav.doNotTrack || "unknown",
     pdfViewerEnabled: nav.pdfViewerEnabled ?? false,
-    hasLocalStorage: (() => {
+    colorDepth: screen.colorDepth || 0,
+    colorGamut: (() => {
       try {
-        localStorage.setItem("_t", "1");
-        localStorage.removeItem("_t");
-        return true;
-      } catch {
-        return false;
-      }
+        if (window.matchMedia("(color-gamut: p3)").matches) return "p3";
+        if (window.matchMedia("(color-gamut: srgb)").matches) return "srgb";
+        return "unknown";
+      } catch { return "unknown"; }
+    })(),
+    hasLocalStorage: (() => {
+      try { localStorage.setItem("_bdt", "1"); localStorage.removeItem("_bdt"); return true; }
+      catch { return false; }
     })(),
     hasIndexedDB: !!(window as any).indexedDB,
     hasWebGL: (() => {
-      try {
-        return !!document.createElement("canvas").getContext("webgl");
-      } catch {
-        return false;
-      }
+      try { return !!document.createElement("canvas").getContext("webgl"); }
+      catch { return false; }
     })(),
+    osConsistent: checkOsConsistency(),
   };
 }
 
 // ─── Interface des signaux ────────────────────────────────────────────────────
 export interface BotSignals {
+  // Détection d'automatisation
   webdriver: boolean;
   phantom: boolean;
   selenium: boolean;
   headless: boolean;
   automationFlags: boolean;
+
+  // Empreintes médias
   canvasFp: string;
   webglFp: string;
   audioFp: string;
+
+  // Biométrie comportementale
   mouseMovements: number;
   mouseDistance: number;
+  mouseVelocityCV: number;    // CV vitesse souris (-1 = données insuffisantes)
+  mouseStraightRatio: number; // Ratio segments rectilignes (-1 = données insuffisantes)
   keystrokes: number;
+  keystrokeCV: number;        // CV intervalles frappe (-1 = données insuffisantes)
   scrollCount: number;
   clickCount: number;
   touchCount: number;
+  focusCount: number;
+  pasteCount: number;
+  contextMenuCount: number;
+
+  // Timing
   timeSinceLoad: number;
   firstInteractionDelay: number | null;
+
+  // Environnement navigateur
   browser: ReturnType<typeof getBrowserChecks>;
 }
 
-// ─── Collecte de tous les signaux ────────────────────────────────────────────
+// ─── Collecte de tous les signaux ─────────────────────────────────────────────
 export async function collectBotSignals(): Promise<BotSignals> {
-  const [audioFp] = await Promise.all([getAudioFingerprint()]);
-
   return {
     webdriver: detectWebDriver(),
     phantom: detectPhantomJS(),
@@ -306,56 +381,81 @@ export async function collectBotSignals(): Promise<BotSignals> {
     automationFlags: detectAutomationFlags(),
     canvasFp: getCanvasFingerprint(),
     webglFp: getWebGLFingerprint(),
-    audioFp,
+    audioFp: getAudioFingerprint(),
     mouseMovements,
     mouseDistance: Math.round(mouseDistance),
+    mouseVelocityCV: computeMouseVelocityCV(),
+    mouseStraightRatio: computeMouseStraightRatio(),
     keystrokes,
+    keystrokeCV: computeKeystrokeCV(),
     scrollCount,
     clickCount,
     touchCount,
+    focusCount,
+    pasteCount,
+    contextMenuCount,
     timeSinceLoad: Date.now() - pageLoadTime,
     firstInteractionDelay,
     browser: getBrowserChecks(),
   };
 }
 
-// ─── Calcul du score de bot (0 = humain, 100+ = bot certain) ─────────────────
+// ─── Score côté client (0 = humain, ≥ 80 = bot probable) ─────────────────────
+// Calibré pour le Turnstile invisible : le verify peut être appelé AVANT
+// toute interaction, donc on ne pénalise pas l'absence d'interaction < 5s.
 export function computeBotScore(s: BotSignals): number {
   let score = 0;
 
-  // Indicateurs définitifs de bot
+  // ── Indicateurs définitifs d'automatisation ──
   if (s.webdriver) score += 100;
   if (s.phantom) score += 100;
   if (s.selenium) score += 100;
   if (s.automationFlags) score += 90;
   if (s.headless) score += 80;
 
-  // Comportement : aucune interaction souris/clavier/scroll
-  if (s.mouseMovements === 0 && s.clickCount === 0 && s.touchCount === 0) score += 35;
-  if (s.mouseDistance < 10 && !s.browser.touchSupport) score += 15;
-  if (s.keystrokes === 0) score += 10;
-  if (s.scrollCount === 0) score += 5;
+  // ── Timing : seulement pénaliser si vraiment ultra-rapide ──
+  // Un utilisateur réel peut charger la page et déclencher le verify en 400-800ms.
+  if (s.timeSinceLoad < 300) score += 50;        // Quasi-impossible sans script
+  else if (s.timeSinceLoad < 600) score += 20;   // Très rapide mais possible
 
-  // Trop rapide
-  if (s.timeSinceLoad < 500) score += 40;
-  else if (s.timeSinceLoad < 1500) score += 20;
+  // ── Absence d'interaction : UNIQUEMENT si la page est ouverte depuis > 5s ──
+  // Le Turnstile invisible se déclenche avant toute interaction — c'est normal.
+  const noInteraction = s.mouseMovements === 0 && s.clickCount === 0 && s.touchCount === 0;
+  if (noInteraction && s.timeSinceLoad > 9000) score += 35;
+  else if (noInteraction && s.timeSinceLoad > 5000) score += 20;
 
-  // Pas d'interaction immédiate sur vote (< 200ms = scripted)
-  if (s.firstInteractionDelay !== null && s.firstInteractionDelay < 200) score += 25;
+  // ── Interaction trop rapide (scripted) ──
+  if (s.firstInteractionDelay !== null && s.firstInteractionDelay < 120) score += 25;
 
-  // Navigateur suspect
-  if (s.browser.plugins === 0 && !s.browser.touchSupport) score += 15;
-  if (!s.browser.languages) score += 20;
+  // ── Environnement navigateur : signaux non-ambigus seulement ──
+  if (!s.browser.languages) score += 20;          // Pas de langue = non-navigateur
   if (!s.browser.timezone) score += 15;
   if (s.browser.hardwareConcurrency === 0) score += 15;
+  if (!s.browser.osConsistent) score += 20;       // Incohérence OS/UA
+  // NOTE: plugins === 0 SUPPRIMÉ (false positive sur Firefox 94+)
+  // NOTE: AudioContext failures SUPPRIMÉES (politique autoplay normale)
 
-  // Canvas/WebGL absents (headless ou sandboxé)
-  if (s.canvasFp === "no-canvas" || s.canvasFp === "canvas-error") score += 25;
+  // ── Canvas / WebGL absents ──
+  if (s.canvasFp === "no-canvas") score += 25;
   if (s.webglFp === "no-webgl") score += 20;
-  if (s.audioFp === "no-audio-api" || s.audioFp === "audio-error") score += 10;
-
-  // Pas de localStorage / indexedDB (environnement restreint)
   if (!s.browser.hasLocalStorage) score += 15;
 
-  return Math.min(score, 200); // Plafonner à 200
+  // ── Biométrie comportementale (bots simulant le comportement humain) ──
+
+  // Vitesse souris suspicieusement uniforme (CV < 0.15 avec ≥ 15 mouvements)
+  if (s.mouseVelocityCV >= 0 && s.mouseVelocityCV < 0.15 && s.mouseMovements >= 15) {
+    score += 25; // Ex: Puppeteer avec mousemove synthétique à vitesse constante
+  }
+
+  // Trajectoire trop rectiligne (> 88% segments droits avec ≥ 20 mouvements)
+  if (s.mouseStraightRatio >= 0 && s.mouseStraightRatio > 0.88 && s.mouseMovements >= 20) {
+    score += 20; // Les humains ont des trajectoires courbes naturelles
+  }
+
+  // Frappe trop uniforme (CV < 0.10 avec ≥ 6 intervalles enregistrés)
+  if (s.keystrokeCV >= 0 && s.keystrokeCV < 0.10 && s.keystrokes >= 7) {
+    score += 25; // Un bot tape à vitesse parfaitement constante
+  }
+
+  return Math.min(score, 200);
 }

@@ -177,8 +177,8 @@ export function requireLowBotScore(req, res, next) {
 
   if (isNaN(botScore)) return next();
 
-  // Score >= 80 = probablement un bot
-  if (botScore >= 80) {
+  // Score >= 85 = probablement un bot (relevé depuis 80 pour absorber les légères variations)
+  if (botScore >= 85) {
     logSuspicious(ipHash, `high_bot_score:${botScore}`);
     maybeBlock(ipHash);
     return res.status(403).json({
