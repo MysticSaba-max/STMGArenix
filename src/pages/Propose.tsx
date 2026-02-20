@@ -51,15 +51,15 @@ function LogoUploader({
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(value || null);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+  async function processFile(file: File) {
     if (file.size > 2 * 1024 * 1024) {
       toast.error("Fichier trop lourd (max 2 MB).");
       return;
     }
-    const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (!ALLOWED.includes(file.type)) {
       toast.error("Type non autorisé. Utilisez JPG, PNG, WebP ou GIF.");
       return;
@@ -84,6 +84,28 @@ function LogoUploader({
     }
   }
 
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+  }
+
   function clearLogo() {
     setPreview(null);
     onChange("");
@@ -92,37 +114,41 @@ function LogoUploader({
 
   return (
     <div className="space-y-3">
-      {preview ? (
-        <div className="relative w-20 h-20">
-          <img
-            src={preview}
-            alt="Prévisualisation"
-            className="w-20 h-20 rounded-xl object-cover border border-border"
-          />
-          <button
-            type="button"
-            onClick={clearLogo}
-            className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-80"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      ) : (
-        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-border flex items-center justify-center text-muted-foreground">
-          <Upload className="w-6 h-6" />
-        </div>
-      )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={uploading}
-        onClick={() => fileRef.current?.click()}
-        className="gap-2"
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={() => !preview && fileRef.current?.click()}
+        className={`relative transition-colors ${!preview ? "cursor-pointer" : ""}`}
       >
-        {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-        {uploading ? "Upload en cours..." : "Choisir une icône"}
-      </Button>
+        {preview ? (
+          <div className="relative w-20 h-20">
+            <img
+              src={preview}
+              alt="Prévisualisation"
+              className="w-20 h-20 rounded-xl object-cover border border-border"
+            />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); clearLogo(); }}
+              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-80"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <div className={`w-full min-h-[80px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 p-4 transition-colors ${
+            dragOver
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary/70"
+          }`}>
+            <Upload className="w-6 h-6" />
+            <span className="text-xs text-center">
+              {uploading ? "Upload en cours..." : "Glissez une image ici ou cliquez"}
+            </span>
+          </div>
+        )}
+      </div>
       <p className="text-xs text-muted-foreground">JPG, PNG, WebP ou GIF · max 2 MB</p>
       <input
         ref={fileRef}
