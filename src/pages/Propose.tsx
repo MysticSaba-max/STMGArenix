@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -124,7 +124,7 @@ function LogoUploader({
         {preview ? (
           <div className="relative w-20 h-20">
             <img
-              src={preview}
+              src={getAssetUrl(preview)}
               alt="Prévisualisation"
               className="w-20 h-20 rounded-xl object-cover border border-border"
             />

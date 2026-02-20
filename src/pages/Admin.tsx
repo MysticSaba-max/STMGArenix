@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api } from "@/lib/api";
+import { api, getAssetUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,7 +90,7 @@ function SiteLogo({ site }: { site: { name: string; logo_path: string } }) {
   }
   return (
     <img
-      src={site.logo_path}
+      src={getAssetUrl(site.logo_path)}
       alt={site.name}
       className="w-8 h-8 rounded-lg object-cover shrink-0"
       onError={() => setImgError(true)}
@@ -174,7 +174,7 @@ function LogoUploader({ value, onChange }: { value: string; onChange: (path: str
         {preview ? (
           <div className="relative w-20 h-20">
             <img
-              src={preview}
+              src={getAssetUrl(preview)}
               alt="Prévisualisation"
               className="w-20 h-20 rounded-xl object-cover border border-border"
             />
@@ -719,7 +719,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <TableCell>
                       {p.logo_path ? (
                         <img
-                          src={p.logo_path}
+                          src={getAssetUrl(p.logo_path)}
                           alt={p.name}
                           className="w-9 h-9 rounded-lg object-cover"
                           onError={(e) => {

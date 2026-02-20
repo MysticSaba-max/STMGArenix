@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import { getFingerprint } from "@/lib/fingerprint";
 import { toast } from "sonner";
@@ -109,7 +109,7 @@ function SiteLogo({ site, size = 64 }: { site: { name: string; logo_path: string
   }
   return (
     <img
-      src={site.logo_path}
+      src={getAssetUrl(site.logo_path)}
       alt={site.name}
       className="rounded-xl object-cover shrink-0"
       style={{ width: size, height: size }}

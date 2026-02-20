@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import {
   Table,
@@ -35,7 +35,7 @@ function SiteLogo({ site }: { site: { name: string; logo_path: string } }) {
   }
   return (
     <img
-      src={site.logo_path}
+      src={getAssetUrl(site.logo_path)}
       alt={site.name}
       className="w-8 h-8 rounded-lg object-cover shrink-0"
       onError={() => setImgError(true)}

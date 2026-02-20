@@ -2,6 +2,7 @@ import { getTurnstileToken } from "./turnstile";
 import { collectBotSignals, computeBotScore } from "./botDetection";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 const SESSION_COOKIE = "vote_session";
 
 let cachedFingerprint: string | null = null;
@@ -206,3 +207,11 @@ export const api = {
       body: JSON.stringify({ newPassword }),
     }),
 };
+
+/** Résout un chemin d'asset backend (ex: `/logos/xxx.png`) en URL complète. */
+export function getAssetUrl(path: string): string {
+  if (!path || path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:")) {
+    return path;
+  }
+  return `${BACKEND_ORIGIN}${path}`;
+}
