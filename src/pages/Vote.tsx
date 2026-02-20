@@ -176,6 +176,7 @@ export default function VotePage() {
   const [sortBy, setSortBy] = useState<SortOption>("votes");
   const [leaderboardData, setLeaderboardData] = useState<Record<number, LeaderboardEntry>>({});
   const [instantVoteOpen, setInstantVoteOpen] = useState(false);
+  const [instantVoteConfirmed, setInstantVoteConfirmed] = useState(false);
 
   // Ref vers la promesse de vérification pour que les handlers puissent l'attendre
   const verificationRef = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -192,6 +193,7 @@ export default function VotePage() {
 
   const handleInstantVoteClose = useCallback(() => {
     setInstantVoteOpen(false);
+    setInstantVoteConfirmed(false);
     // Retirer le paramètre instantvote de l'URL sans recharger la page
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -458,111 +460,145 @@ export default function VotePage() {
       {instantVoteSite && (
         <Dialog open={instantVoteOpen} onOpenChange={(open) => { if (!open) handleInstantVoteClose(); }}>
           <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-3">
-                <SiteLogo site={instantVoteSite} size={40} />
-                <span>Voter pour {instantVoteSite.name}</span>
-              </DialogTitle>
-              <DialogDescription>
-                Donnez votre avis sur ce site de streaming
-              </DialogDescription>
-            </DialogHeader>
+            {!instantVoteConfirmed ? (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-3">
+                    <SiteLogo site={instantVoteSite} size={40} />
+                    <span>{instantVoteSite.name}</span>
+                  </DialogTitle>
+                  <DialogDescription>
+                    Quelqu'un vous a partagé un lien de vote pour ce site. Souhaitez-vous donner votre avis ?
+                  </DialogDescription>
+                </DialogHeader>
 
-            <div className="space-y-4 py-2">
-              {/* Global Vote dans le popup */}
-              <div className="flex items-center justify-center gap-3">
-                <Button
-                  variant={globalVotes[instantVoteSite.id] === "up" ? "default" : "outline"}
-                  size="sm"
-                  className={`gap-1.5 ${globalVotes[instantVoteSite.id] === "up" ? "bg-green-600 hover:bg-green-700 text-white" : "hover:text-green-500 hover:border-green-500"}`}
-                  onClick={() => handleGlobalVote(instantVoteSite.id, "up")}
-                  disabled={!!votingInProgress[`global_${instantVoteSite.id}`]}
-                >
-                  <ThumbsUp className="w-4 h-4" />
-                  Pour
-                </Button>
-                <Button
-                  variant={globalVotes[instantVoteSite.id] === "down" ? "default" : "outline"}
-                  size="sm"
-                  className={`gap-1.5 ${globalVotes[instantVoteSite.id] === "down" ? "bg-red-600 hover:bg-red-700 text-white" : "hover:text-red-500 hover:border-red-500"}`}
-                  onClick={() => handleGlobalVote(instantVoteSite.id, "down")}
-                  disabled={!!votingInProgress[`global_${instantVoteSite.id}`]}
-                >
-                  <ThumbsDown className="w-4 h-4" />
-                  Contre
-                </Button>
-              </div>
-
-              <Separator />
-
-              {/* Category Ratings dans le popup */}
-              <div className="space-y-2.5">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Notes par catégorie
-                </p>
-                {categoryConfig.map(({ key, label, icon: Icon }) => (
-                  <div key={key} className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-2 text-sm min-w-0">
-                      <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="truncate">{label}</span>
-                    </div>
-                    <StarRating
-                      value={pendingCategoryVotes[`${instantVoteSite.id}_${key}`] || 0}
-                      onChange={(score) => handlePendingCategoryChange(instantVoteSite.id, key, score)}
-                    />
-                  </div>
-                ))}
-
-                {/* Submit categories dans le popup */}
-                <div className="pt-2">
-                  {(() => {
-                    const popupFilledCount = categoryConfig.filter(
-                      ({ key }) => pendingCategoryVotes[`${instantVoteSite.id}_${key}`] > 0
-                    ).length;
-                    const popupRemaining = categoryConfig.length - popupFilledCount;
-                    const popupAllFilled = popupRemaining === 0;
-                    const popupIsSubmitting = !!votingInProgress[`cat_submit_${instantVoteSite.id}`];
-                    const popupAlreadySubmitted = submittedSites.has(instantVoteSite.id);
-                    const popupHasChanges = categoryConfig.some(({ key }) => {
-                      const pending = pendingCategoryVotes[`${instantVoteSite.id}_${key}`] || 0;
-                      const saved = categoryVotes[`${instantVoteSite.id}_${key}`] || 0;
-                      return pending !== saved;
-                    });
-
-                    if (popupAllFilled) {
-                      if (popupAlreadySubmitted && !popupHasChanges) {
-                        return (
-                          <div className="flex items-center gap-2 text-xs text-green-500">
-                            <Check className="w-3.5 h-3.5" />
-                            Notes enregistrées
-                          </div>
-                        );
-                      }
-                      return (
-                        <Button
-                          size="sm"
-                          className="w-full gap-2"
-                          onClick={() => handleSubmitCategories(instantVoteSite.id)}
-                          disabled={popupIsSubmitting}
-                        >
-                          {popupIsSubmitting ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Check className="w-4 h-4" />
-                          )}
-                          {popupIsSubmitting ? "Vérification..." : "Valider les notes"}
-                        </Button>
-                      );
-                    }
-                    return (
-                      <p className="text-xs text-muted-foreground text-center">
-                        Remplissez toutes les catégories pour valider ({popupRemaining} restante{popupRemaining > 1 ? "s" : ""})
-                      </p>
-                    );
-                  })()}
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <Button
+                    className="gap-2"
+                    onClick={() => setInstantVoteConfirmed(true)}
+                  >
+                    <ThumbsUp className="w-4 h-4" />
+                    Voter
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={handleInstantVoteClose}
+                  >
+                    <ThumbsDown className="w-4 h-4" />
+                    Non merci
+                  </Button>
                 </div>
-              </div>
-            </div>
+              </>
+            ) : (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-3">
+                    <SiteLogo site={instantVoteSite} size={40} />
+                    <span>Voter pour {instantVoteSite.name}</span>
+                  </DialogTitle>
+                  <DialogDescription>
+                    Donnez votre avis sur ce site de streaming
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  {/* Global Vote dans le popup */}
+                  <div className="flex items-center justify-center gap-3">
+                    <Button
+                      variant={globalVotes[instantVoteSite.id] === "up" ? "default" : "outline"}
+                      size="sm"
+                      className={`gap-1.5 ${globalVotes[instantVoteSite.id] === "up" ? "bg-green-600 hover:bg-green-700 text-white" : "hover:text-green-500 hover:border-green-500"}`}
+                      onClick={() => handleGlobalVote(instantVoteSite.id, "up")}
+                      disabled={!!votingInProgress[`global_${instantVoteSite.id}`]}
+                    >
+                      <ThumbsUp className="w-4 h-4" />
+                      Pour
+                    </Button>
+                    <Button
+                      variant={globalVotes[instantVoteSite.id] === "down" ? "default" : "outline"}
+                      size="sm"
+                      className={`gap-1.5 ${globalVotes[instantVoteSite.id] === "down" ? "bg-red-600 hover:bg-red-700 text-white" : "hover:text-red-500 hover:border-red-500"}`}
+                      onClick={() => handleGlobalVote(instantVoteSite.id, "down")}
+                      disabled={!!votingInProgress[`global_${instantVoteSite.id}`]}
+                    >
+                      <ThumbsDown className="w-4 h-4" />
+                      Contre
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  {/* Category Ratings dans le popup */}
+                  <div className="space-y-2.5">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Notes par catégorie
+                    </p>
+                    {categoryConfig.map(({ key, label, icon: Icon }) => (
+                      <div key={key} className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-2 text-sm min-w-0">
+                          <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </div>
+                        <StarRating
+                          value={pendingCategoryVotes[`${instantVoteSite.id}_${key}`] || 0}
+                          onChange={(score) => handlePendingCategoryChange(instantVoteSite.id, key, score)}
+                        />
+                      </div>
+                    ))}
+
+                    {/* Submit categories dans le popup */}
+                    <div className="pt-2">
+                      {(() => {
+                        const popupFilledCount = categoryConfig.filter(
+                          ({ key }) => pendingCategoryVotes[`${instantVoteSite.id}_${key}`] > 0
+                        ).length;
+                        const popupRemaining = categoryConfig.length - popupFilledCount;
+                        const popupAllFilled = popupRemaining === 0;
+                        const popupIsSubmitting = !!votingInProgress[`cat_submit_${instantVoteSite.id}`];
+                        const popupAlreadySubmitted = submittedSites.has(instantVoteSite.id);
+                        const popupHasChanges = categoryConfig.some(({ key }) => {
+                          const pending = pendingCategoryVotes[`${instantVoteSite.id}_${key}`] || 0;
+                          const saved = categoryVotes[`${instantVoteSite.id}_${key}`] || 0;
+                          return pending !== saved;
+                        });
+
+                        if (popupAllFilled) {
+                          if (popupAlreadySubmitted && !popupHasChanges) {
+                            return (
+                              <div className="flex items-center gap-2 text-xs text-green-500">
+                                <Check className="w-3.5 h-3.5" />
+                                Notes enregistrées
+                              </div>
+                            );
+                          }
+                          return (
+                            <Button
+                              size="sm"
+                              className="w-full gap-2"
+                              onClick={() => handleSubmitCategories(instantVoteSite.id)}
+                              disabled={popupIsSubmitting}
+                            >
+                              {popupIsSubmitting ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                              {popupIsSubmitting ? "Vérification..." : "Valider les notes"}
+                            </Button>
+                          );
+                        }
+                        return (
+                          <p className="text-xs text-muted-foreground text-center">
+                            Remplissez toutes les catégories pour valider ({popupRemaining} restante{popupRemaining > 1 ? "s" : ""})
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </DialogContent>
         </Dialog>
       )}
