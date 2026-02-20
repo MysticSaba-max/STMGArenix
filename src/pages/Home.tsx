@@ -125,11 +125,11 @@ export default function Home() {
 
       {/* Top 3 Podium Section */}
       <section className="container mx-auto px-4 py-10 sm:py-16 md:py-24">
-        <div className="text-center mb-8 sm:mb-12">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold animate-fade-in-up stagger-1">
+        <div className="text-center mb-8 sm:mb-12 scroll-reveal">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold">
             Le Podium
           </h2>
-          <p className="mt-3 text-muted-foreground animate-fade-in-up stagger-2">
+          <p className="mt-3 text-muted-foreground">
             Les trois sites de streaming les mieux notés par la communauté
           </p>
         </div>
@@ -140,13 +140,13 @@ export default function Home() {
           </div>
         ) : top3.length >= 3 ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-4xl mx-auto items-end">
-            <div className="animate-fade-in-up stagger-2 order-2 sm:order-1">
+            <div className="scroll-reveal delay-2 order-2 sm:order-1">
               <PodiumCard site={top3[1]} rank={2} />
             </div>
-            <div className="animate-fade-in-up stagger-1 order-1 sm:order-2">
+            <div className="scroll-reveal delay-1 order-1 sm:order-2">
               <PodiumCard site={top3[0]} rank={1} />
             </div>
-            <div className="animate-fade-in-up stagger-3 order-3">
+            <div className="scroll-reveal delay-3 order-3">
               <PodiumCard site={top3[2]} rank={3} />
             </div>
           </div>
@@ -159,21 +159,21 @@ export default function Home() {
       <section className="border-y bg-muted/30">
         <div className="container mx-auto px-4 py-12">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            <div className="text-center animate-fade-in-up stagger-1">
+            <div className="text-center scroll-reveal delay-1">
               <div className="flex items-center justify-center gap-2 text-primary mb-2">
                 <BarChart3 className="w-5 h-5" />
               </div>
               <div className="text-3xl font-bold">{leaderboard.length}</div>
               <div className="text-sm text-muted-foreground mt-1">Sites répertoriés</div>
             </div>
-            <div className="text-center animate-fade-in-up stagger-2">
+            <div className="text-center scroll-reveal delay-2">
               <div className="flex items-center justify-center gap-2 text-primary mb-2">
                 <Users className="w-5 h-5" />
               </div>
               <div className="text-3xl font-bold">{totalVotes}</div>
               <div className="text-sm text-muted-foreground mt-1">Votes comptabilisés</div>
             </div>
-            <div className="text-center animate-fade-in-up stagger-3">
+            <div className="text-center scroll-reveal delay-3">
               <div className="flex items-center justify-center gap-2 text-primary mb-2">
                 <Trophy className="w-5 h-5" />
               </div>

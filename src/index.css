@@ -234,3 +234,35 @@
 .rank-gold { background: linear-gradient(135deg, #f6d365, #fda085, #f6d365); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .rank-silver { background: linear-gradient(135deg, #bdc3c7, #ecf0f1, #bdc3c7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .rank-bronze { background: linear-gradient(135deg, #cd7f32, #e8a87c, #cd7f32); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* ── Scroll reveal ─────────────────────────────────────────────────────────── */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scroll-reveal.delay-1 { transition-delay: 0.1s; }
+.scroll-reveal.delay-2 { transition-delay: 0.2s; }
+.scroll-reveal.delay-3 { transition-delay: 0.3s; }
+.scroll-reveal.delay-4 { transition-delay: 0.4s; }
+.scroll-reveal.delay-5 { transition-delay: 0.5s; }
+
+/* ── Mouse spotlight ───────────────────────────────────────────────────────── */
+.spotlight-layer {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    700px circle at var(--mouse-x, -200%) var(--mouse-y, -200%),
+    color-mix(in srgb, var(--primary) 5%, transparent),
+    transparent 70%
+  );
+}
