@@ -260,8 +260,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [proposalFilter, setProposalFilter] = useState<string>("pending");
+  const [allProposals, setAllProposals] = useState<Proposal[]>([]);
+  const [proposalFilter, setProposalFilter] = useState<"pending" | "accepted" | "rejected">("pending");
   const [proposalActionLoading, setProposalActionLoading] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
 
@@ -298,10 +298,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [newPw, setNewPw] = useState("");
   const [pwLoading, setPwLoading] = useState(false);
 
-  const fetchProposals = useCallback(async (status: string) => {
+  const proposals = allProposals.filter((p) => p.status === proposalFilter);
+
+  const fetchProposals = useCallback(async () => {
     try {
-      const data = await api.getProposals(status === "all" ? undefined : status);
-      setProposals(data);
+      const data = await api.getProposals(undefined);
+      setAllProposals(data);
     } catch { /* silently ignore */ }
   }, []);
 
@@ -315,7 +317,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setStats(statsData);
       setSites(sitesData);
       setAdmins(adminsData);
-      await fetchProposals("pending");
+      await fetchProposals();
     } catch (err: any) {
       const msg: string = err.message || "";
       if (msg.includes("401") || msg.includes("Unauthorized") || msg.includes("token")) {
@@ -348,7 +350,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         await api.rejectProposal(id);
         toast.success("Proposition refusée.");
       }
-      fetchProposals(proposalFilter);
+      fetchProposals();
     } catch (err: any) {
       toast.error(err.message || "Erreur lors du traitement");
     } finally {
@@ -356,9 +358,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  async function handleProposalFilterChange(status: string) {
+  function handleProposalFilterChange(status: "pending" | "accepted" | "rejected") {
     setProposalFilter(status);
-    await fetchProposals(status);
   }
 
   // ── Handlers site ──
@@ -603,9 +604,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
             <PlusCircle className="w-5 h-5 text-primary" />
             Propositions &amp; signalements
-            {proposals.filter((p) => p.status === "pending").length > 0 && proposalFilter !== "pending" && (
+            {allProposals.filter((p) => p.status === "pending").length > 0 && proposalFilter !== "pending" && (
               <span className="ml-1 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-                {proposals.filter((p) => p.status === "pending").length}
+                {allProposals.filter((p) => p.status === "pending").length}
               </span>
             )}
           </h2>
