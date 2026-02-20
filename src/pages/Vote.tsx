@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { getFingerprint } from "@/lib/fingerprint";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
   MonitorPlay,
   Check,
   ShieldX,
+  ShieldCheck,
 } from "lucide-react";
 
 interface Site {
@@ -44,6 +45,19 @@ const categoryConfig = [
   { key: "liens", label: "Liens", icon: LinkIcon },
   { key: "catalogue", label: "Catalogue", icon: Library },
   { key: "qualite_video", label: "Qualité Vidéo", icon: MonitorPlay },
+];
+
+// Codes de sécurité qui déclenchent un blocage complet
+const SECURITY_CODES = [
+  "VPN_DETECTED",
+  "PROXY_DETECTED",
+  "TOR_DETECTED",
+  "RELAY_DETECTED",
+  "DATACENTER_IP",
+  "VPN_PROXY_DETECTED",
+  "BOT_DETECTED",
+  "BOT_SESSION",
+  "BOT_SCORE_HIGH",
 ];
 
 function SiteLogo({ site, size = 64 }: { site: { name: string; logo_path: string }; size?: number }) {
@@ -105,6 +119,7 @@ function StarRating({
 export default function VotePage() {
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
+  // verifying = vérification Turnstile encore en cours (n'est plus un bloqueur de rendu)
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
   const [blockError, setBlockError] = useState<{ message: string; code: string } | null>(null);
@@ -115,6 +130,9 @@ export default function VotePage() {
   const [votingInProgress, setVotingInProgress] = useState<Record<string, boolean>>({});
   const [submittedSites, setSubmittedSites] = useState<Set<number>>(new Set());
 
+  // Ref vers la promesse de vérification pour que les handlers puissent l'attendre
+  const verificationRef = useRef<Promise<boolean>>(Promise.resolve(true));
+
   useEffect(() => {
     async function init() {
       try {
@@ -122,16 +140,29 @@ export default function VotePage() {
         setFingerprint(fp);
         api.setFingerprint(fp);
 
-        // Skip Turnstile if session cookie already exists
+        // ── Lancer la vérification en arrière-plan (sans await immédiat) ──────
         if (api.hasSession()) {
           setVerified(true);
           setVerifying(false);
+          verificationRef.current = Promise.resolve(true);
         } else {
-          await api.verifyTurnstile(fp);
-          setVerified(true);
-          setVerifying(false);
+          verificationRef.current = api.verifyTurnstile(fp)
+            .then(() => {
+              setVerified(true);
+              setVerifying(false);
+              return true;
+            })
+            .catch((err: any) => {
+              setVerifying(false);
+              if (err.code && SECURITY_CODES.includes(err.code)) {
+                // Bot ou VPN détecté → remplace le formulaire par l'écran de blocage
+                setBlockError({ message: err.message, code: err.code });
+              }
+              return false;
+            });
         }
 
+        // ── Charger sites + votes immédiatement, sans attendre Turnstile ──────
         const [sitesData, votesData] = await Promise.all([
           api.getSites(),
           api.getMyVotes(fp),
@@ -154,30 +185,24 @@ export default function VotePage() {
         setCategoryVotes(cv);
         setPendingCategoryVotes(cv);
         setSubmittedSites(alreadySubmitted);
+
       } catch (err: any) {
         console.error(err);
-        setVerifying(false);
-        const SECURITY_CODES = [
-          "VPN_DETECTED",
-          "PROXY_DETECTED",
-          "TOR_DETECTED",
-          "RELAY_DETECTED",
-          "DATACENTER_IP",
-          "VPN_PROXY_DETECTED",
-        ];
-        if (err.code && SECURITY_CODES.includes(err.code)) {
-          setBlockError({ message: err.message, code: err.code });
-        } else if (!verified) {
-          toast.error(err.message || "La vérification a échoué, veuillez réessayer");
-        } else {
-          toast.error(err.message || "Erreur lors du chargement des données");
-        }
+        toast.error(err.message || "Erreur lors du chargement des données");
       } finally {
         setLoading(false);
       }
     }
     init();
   }, []);
+
+  // ── Attendre la fin de la vérification avant d'envoyer un vote ─────────────
+  // Retourne true si vérifié, false si bloqué/échoué
+  const ensureVerified = useCallback(async (): Promise<boolean> => {
+    if (verified) return true;
+    if (blockError) return false;
+    return verificationRef.current;
+  }, [verified, blockError]);
 
   const handleGlobalVote = useCallback(
     async (siteId: number, voteType: "up" | "down") => {
@@ -186,6 +211,13 @@ export default function VotePage() {
 
       setVotingInProgress((prev) => ({ ...prev, [key]: true }));
       try {
+        // Si la vérification est encore en cours, on l'attend avant d'envoyer le vote
+        const ok = await ensureVerified();
+        if (!ok) {
+          toast.error("Vérification de sécurité échouée. Rechargez la page.");
+          return;
+        }
+
         const result = await api.vote({ site_id: siteId, vote_type: voteType, fingerprint });
         if (result.action === "removed") {
           setGlobalVotes((prev) => {
@@ -204,7 +236,7 @@ export default function VotePage() {
         setVotingInProgress((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [fingerprint, votingInProgress]
+    [fingerprint, votingInProgress, ensureVerified]
   );
 
   const handlePendingCategoryChange = useCallback(
@@ -221,6 +253,13 @@ export default function VotePage() {
 
       setVotingInProgress((prev) => ({ ...prev, [key]: true }));
       try {
+        // Si la vérification est encore en cours, on l'attend avant d'envoyer les notes
+        const ok = await ensureVerified();
+        if (!ok) {
+          toast.error("Vérification de sécurité échouée. Rechargez la page.");
+          return;
+        }
+
         const ratings: Record<string, number> = {};
         for (const { key: catKey } of categoryConfig) {
           const score = pendingCategoryVotes[`${siteId}_${catKey}`];
@@ -243,9 +282,10 @@ export default function VotePage() {
         setVotingInProgress((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [fingerprint, pendingCategoryVotes, votingInProgress]
+    [fingerprint, pendingCategoryVotes, votingInProgress, ensureVerified]
   );
 
+  // ── Blocage sécurité (VPN / bot détecté — y compris pendant le remplissage) ─
   if (blockError) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4 text-center px-4">
@@ -262,24 +302,12 @@ export default function VotePage() {
     );
   }
 
-  if (verifying || loading) {
+  // ── Chargement initial des données (spinner très court) ──────────────────────
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">
-          {verifying ? "On vérifie que vous n'êtes pas un robot..." : "Chargement des données..."}
-        </p>
-      </div>
-    );
-  }
-
-  if (!verified) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <p className="text-sm text-muted-foreground">
-          La vérification a échoué. Veuillez rafraîchir la page.
-        </p>
-        <Button onClick={() => window.location.reload()}>Réessayer</Button>
+        <p className="text-sm text-muted-foreground">Chargement des données...</p>
       </div>
     );
   }
@@ -292,6 +320,19 @@ export default function VotePage() {
         <p className="mt-3 text-muted-foreground max-w-2xl">
           Votre vote compte ! Un seul vote par appareil par site.
         </p>
+        {/* Indicateur de vérification discret (disparaît une fois terminée) */}
+        {verifying && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground/60">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Vérification de sécurité en cours…
+          </div>
+        )}
+        {!verifying && verified && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-green-500/70">
+            <ShieldCheck className="w-3 h-3" />
+            Vérification réussie
+          </div>
+        )}
       </div>
 
       {/* Site Grid */}
