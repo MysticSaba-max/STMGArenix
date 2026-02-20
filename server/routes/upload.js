@@ -1,13 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
 import crypto from "crypto";
 import { requireAdmin } from "../middleware/auth.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOGOS_DIR = path.join(__dirname, "../../public/logos");
+const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
 
 // Créer le dossier si nécessaire
 if (!fs.existsSync(LOGOS_DIR)) {

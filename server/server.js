@@ -57,7 +57,7 @@ const corsOptions = ALLOWED_ORIGIN
 app.use(cors(corsOptions));
 
 // ─── Fichiers statiques (logos uploadés) ─────────────────────────────────────
-const PUBLIC_DIR = path.resolve(__dirname, "../public");
+const PUBLIC_DIR = path.join(process.cwd(), "public");
 app.use(express.static(PUBLIC_DIR, {
   maxAge: "7d",
   etag: true,
