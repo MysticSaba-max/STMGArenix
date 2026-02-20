@@ -49,16 +49,32 @@ router.get("/stats", requireAdmin, async (_req, res) => {
 router.put("/scores/:id", requireAdmin, async (req, res) => {
   const { upvoteAdjust } = req.body;
   const siteId = Number(req.params.id);
+  if (!siteId || isNaN(siteId) || siteId <= 0) {
+    return res.status(400).json({ error: "ID de site invalide." });
+  }
 
   if (upvoteAdjust !== undefined) {
-    const count = Math.min(Math.abs(upvoteAdjust), 1000); // Limite à 1000
-    const type = upvoteAdjust > 0 ? "up" : "down";
-    for (let i = 0; i < count; i++) {
-      const fp = `admin_adjust_${siteId}_${Date.now()}_${i}`;
-      await pool.execute(
-        "INSERT INTO votes (site_id, fingerprint, vote_type) VALUES (?, ?, ?)",
-        [siteId, `admin_${fp}`, type]
-      );
+    const adj = Number(upvoteAdjust);
+    if (isNaN(adj) || adj === 0) return res.status(400).json({ error: "Valeur d'ajustement invalide." });
+    const count = Math.min(Math.abs(adj), 1000);
+    const type = adj > 0 ? "up" : "down";
+    // Transaction atomique : soit tout passe, soit rien
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const base = Date.now();
+      for (let i = 0; i < count; i++) {
+        await conn.execute(
+          "INSERT INTO votes (site_id, fingerprint, vote_type) VALUES (?, ?, ?)",
+          [siteId, `admin_${siteId}_${base}_${i}`, type]
+        );
+      }
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
   }
   res.json({ success: true });
@@ -116,6 +132,25 @@ router.put("/admins/:id/password", requireAdmin, adminMgmtLimiter, async (req, r
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Réinitialisation des votes d'un site ─────────────────────────────────────
+router.delete("/sites/:id/votes", requireAdmin, async (req, res) => {
+  const siteId = Number(req.params.id);
+  if (!siteId || isNaN(siteId) || siteId <= 0) {
+    return res.status(400).json({ error: "ID de site invalide." });
+  }
+  try {
+    const [siteRows] = await pool.execute("SELECT id, name FROM sites WHERE id = ?", [siteId]);
+    if (!siteRows.length) return res.status(404).json({ error: "Site introuvable." });
+
+    await pool.execute("DELETE FROM votes WHERE site_id = ?", [siteId]);
+    await pool.execute("DELETE FROM category_votes WHERE site_id = ?", [siteId]);
+
+    res.json({ success: true, siteName: siteRows[0].name });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
   }
 });
 

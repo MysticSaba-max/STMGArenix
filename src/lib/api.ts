@@ -146,6 +146,8 @@ export const api = {
   getStats: () => request<any>("/admin/stats"),
   adjustScores: (id: number, data: { upvoteAdjust: number }) =>
     request<any>(`/admin/scores/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  resetSiteVotes: (id: number) =>
+    request<{ success: boolean; siteName: string }>(`/admin/sites/${id}/votes`, { method: "DELETE" }),
 
   // Upload de logo (multipart/form-data — ne passe pas par request())
   uploadLogo: async (file: File): Promise<{ path: string }> => {

@@ -1,11 +1,22 @@
 import pool from "../db/database.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret";
+// ─── JWT Secret — JAMAIS de fallback statique connu ───────────────────────────
+// Si JWT_SECRET est absent/par défaut, on génère un secret aléatoire éphémère :
+// non forgeable, mais les tokens deviennent invalides au redémarrage (dev only).
+const _envSecret = process.env.JWT_SECRET;
+const _defaultValue = "change-me-in-production-use-random-string";
+if (!_envSecret || _envSecret === _defaultValue) {
+  console.warn("⚠️  JWT_SECRET manquant ou valeur par défaut — secret aléatoire éphémère utilisé (tokens invalidés au redémarrage).");
+}
+const JWT_SECRET = (_envSecret && _envSecret !== _defaultValue)
+  ? _envSecret
+  : crypto.randomBytes(32).toString("hex");
 const SALT_ROUNDS = 12;
 
 // ─── Validation ───────────────────────────────────────────────────────────────

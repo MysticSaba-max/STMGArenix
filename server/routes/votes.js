@@ -5,6 +5,13 @@ import { castVote, castCategoryVote, getUserVotes } from "../services/votes.serv
 
 const VALID_CATEGORIES = ["pubs", "facilite", "liens", "catalogue", "qualite_video"];
 
+// Cloudflare injecte CF-Connecting-IP avec la vraie IP cliente.
+// Sans ça, req.ip serait l'IP d'un nœud Cloudflare, faussant les déduplications.
+function getRealIp(req) {
+  const cf = (req.headers["cf-connecting-ip"] || "").trim();
+  return cf || (req.ip || req.socket?.remoteAddress || "").trim();
+}
+
 const router = Router();
 
 // One-time Turnstile verification -> returns a session token
@@ -12,7 +19,7 @@ router.post("/verify", verifyTurnstile);
 
 router.post("/", requireVerifiedSession, requireFingerprint, async (req, res) => {
   const { site_id, vote_type, fingerprintHash } = req.body;
-  const ip = req.ip || req.socket.remoteAddress || "";
+  const ip = getRealIp(req);
   if (!site_id || !["up", "down"].includes(vote_type)) {
     res.status(400).json({ error: "site_id and vote_type (up/down) required" });
     return;
@@ -23,7 +30,7 @@ router.post("/", requireVerifiedSession, requireFingerprint, async (req, res) =>
 
 router.post("/categories", requireVerifiedSession, requireFingerprint, async (req, res) => {
   const { site_id, ratings, fingerprintHash } = req.body;
-  const ip = req.ip || req.socket.remoteAddress || "";
+  const ip = getRealIp(req);
 
   if (!site_id || !ratings || typeof ratings !== "object") {
     res.status(400).json({ error: "site_id and ratings required" });
@@ -46,7 +53,7 @@ router.post("/categories", requireVerifiedSession, requireFingerprint, async (re
 
 router.post("/mine", requireFingerprint, async (req, res) => {
   const { fingerprintHash } = req.body;
-  const ip = req.ip || req.socket.remoteAddress || "";
+  const ip = getRealIp(req);
   const result = await getUserVotes(fingerprintHash, ip);
   res.json(result);
 });

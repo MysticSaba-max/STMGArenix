@@ -6,7 +6,9 @@ export function hashFingerprint(fp) {
 
 export function requireFingerprint(req, res, next) {
   const { fingerprint } = req.body;
-  if (!fingerprint || typeof fingerprint !== "string" || fingerprint.length < 5) {
+  // Min 32 chars : un fingerprint légitime est toujours un hash hex (64 chars minimum).
+  // Bloquer les chaînes trop courtes qui permettraient des collisions volontaires.
+  if (!fingerprint || typeof fingerprint !== "string" || fingerprint.length < 32 || fingerprint.length > 512) {
     res.status(400).json({ error: "Valid fingerprint required" });
     return;
   }

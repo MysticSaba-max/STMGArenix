@@ -1,11 +1,16 @@
 import { createHash } from "crypto";
 
-// ─── API keys vpnapi.io (rotation à chaque requête) ──────────────────────────
-const VPN_API_KEYS = [
-  "b46fd4dfdffd46eeb7922935a8da52a3",
-  "cfde14be7e104e54933e50b17b99817f",
-  "f980c8f6f4ce4f41886cbcd3282a54f4",
-];
+// ─── API keys vpnapi.io — lues depuis la variable d'environnement ─────────────
+// Définir VPN_API_KEYS dans server/.env (clés séparées par des virgules) :
+//   VPN_API_KEYS=cle1,cle2,cle3
+const VPN_API_KEYS = (process.env.VPN_API_KEYS || "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+if (!VPN_API_KEYS.length && process.env.TURNSTILE_SECRET_KEY) {
+  console.warn("⚠️  VPN_API_KEYS non défini — la détection VPN/proxy est désactivée.");
+}
 let currentKeyIndex = 0;
 
 function getNextApiKey() {
@@ -51,7 +56,7 @@ function hashIp(ip) {
 
 async function checkIpReputation(ip) {
   const clean = ip.trim();
-  if (!clean || isLocalIp(clean)) {
+  if (!clean || isLocalIp(clean) || !VPN_API_KEYS.length) {
     return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
   }
 

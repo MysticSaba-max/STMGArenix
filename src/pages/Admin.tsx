@@ -37,6 +37,7 @@ import {
   UserPlus,
   Check,
   PlusCircle,
+  RotateCcw,
 } from "lucide-react";
 
 interface Site {
@@ -285,6 +286,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [scoreAdjustments, setScoreAdjustments] = useState<Record<number, string>>({});
 
+  // ── État reset votes ──
+  const [resetVotesDialogOpen, setResetVotesDialogOpen] = useState(false);
+  const [resettingSite, setResettingSite] = useState<Site | null>(null);
+  const [resetVotesLoading, setResetVotesLoading] = useState(false);
+
   // ── État dialogs admin ──
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [newAdminUsername, setNewAdminUsername] = useState("");
@@ -407,6 +413,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       toast.error(err.message || "Erreur lors de la suppression");
     } finally {
       setDeleteLoading(false);
+    }
+  }
+
+  async function handleResetVotes() {
+    if (!resettingSite) return;
+    setResetVotesLoading(true);
+    try {
+      await api.resetSiteVotes(resettingSite.id);
+      toast.success(`Votes de "${resettingSite.name}" réinitialisés.`);
+      setResetVotesDialogOpen(false);
+      setResettingSite(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de la réinitialisation");
+    } finally {
+      setResetVotesLoading(false);
     }
   }
 
@@ -554,6 +576,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="icon-sm" onClick={() => openEditDialog(site)}><Pencil className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon-sm" className="text-orange-500 hover:text-orange-500" title="Réinitialiser les votes" onClick={() => { setResettingSite(site); setResetVotesDialogOpen(true); }}><RotateCcw className="w-4 h-4" /></Button>
                       <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" onClick={() => { setDeletingSite(site); setDeleteDialogOpen(true); }}><Trash2 className="w-4 h-4" /></Button>
                     </div>
                   </TableCell>
@@ -857,6 +880,32 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog réinitialiser votes site */}
+      <Dialog open={resetVotesDialogOpen} onOpenChange={setResetVotesDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Réinitialiser les votes</DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir supprimer <strong>tous les votes</strong> de{" "}
+              <strong>{resettingSite?.name}</strong> ?{" "}
+              Cette action est irréversible et remettra le score à zéro.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetVotesDialogOpen(false)}>Annuler</Button>
+            <Button
+              variant="destructive"
+              onClick={handleResetVotes}
+              disabled={resetVotesLoading}
+              className="gap-2"
+            >
+              {resetVotesLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              Réinitialiser
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
