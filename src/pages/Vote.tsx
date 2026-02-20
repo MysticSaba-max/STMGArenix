@@ -20,6 +20,11 @@ import {
   ShieldX,
   ShieldCheck,
   Search,
+  ArrowUpDown,
+  TrendingUp,
+  ArrowDownAZ,
+  ArrowUpAZ,
+  Flame,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -29,6 +34,24 @@ interface Site {
   url: string;
   logo_path: string;
 }
+
+interface LeaderboardEntry {
+  id: number;
+  upvotes: number;
+  downvotes: number;
+  score: number;
+  total_votes: number;
+}
+
+type SortOption = "votes" | "score" | "upvotes" | "alpha_asc" | "alpha_desc";
+
+const sortOptions: { key: SortOption; label: string; icon: typeof ArrowUpDown }[] = [
+  { key: "votes", label: "Plus votés", icon: Flame },
+  { key: "score", label: "Meilleur score", icon: TrendingUp },
+  { key: "upvotes", label: "Plus d'upvotes", icon: ThumbsUp },
+  { key: "alpha_asc", label: "A → Z", icon: ArrowDownAZ },
+  { key: "alpha_desc", label: "Z → A", icon: ArrowUpAZ },
+];
 
 interface GlobalVote {
   site_id: number;
@@ -132,6 +155,8 @@ export default function VotePage() {
   const [votingInProgress, setVotingInProgress] = useState<Record<string, boolean>>({});
   const [submittedSites, setSubmittedSites] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("votes");
+  const [leaderboardData, setLeaderboardData] = useState<Record<number, LeaderboardEntry>>({});
 
   // Ref vers la promesse de vérification pour que les handlers puissent l'attendre
   const verificationRef = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -165,13 +190,20 @@ export default function VotePage() {
             });
         }
 
-        // ── Charger sites + votes immédiatement, sans attendre Turnstile ──────
-        const [sitesData, votesData] = await Promise.all([
+        // ── Charger sites + votes + leaderboard immédiatement, sans attendre Turnstile ──────
+        const [sitesData, votesData, lbData] = await Promise.all([
           api.getSites(),
           api.getMyVotes(fp),
+          api.getLeaderboard(),
         ]);
 
         setSites(sitesData);
+
+        const lbMap: Record<number, LeaderboardEntry> = {};
+        (lbData || []).forEach((entry: LeaderboardEntry) => {
+          lbMap[entry.id] = entry;
+        });
+        setLeaderboardData(lbMap);
 
         const gv: Record<number, "up" | "down"> = {};
         (votesData.globalVotes || []).forEach((v: GlobalVote) => {
@@ -338,8 +370,8 @@ export default function VotePage() {
         )}
       </div>
 
-      {/* Barre de recherche */}
-      <div className="mb-6 animate-fade-in-up stagger-2">
+      {/* Barre de recherche + tri */}
+      <div className="mb-6 animate-fade-in-up stagger-2 space-y-4">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -350,13 +382,55 @@ export default function VotePage() {
             className="pl-9"
           />
         </div>
+
+        {/* Options de tri */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            <span>Trier par :</span>
+          </div>
+          {sortOptions.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setSortBy(key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                sortBy === key
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Icon className="w-3 h-3" />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Site Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {sites.filter((site) =>
-          site.name.toLowerCase().includes(searchQuery.toLowerCase())
-        ).map((site, index) => {
+        {sites
+          .filter((site) =>
+            site.name.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+          .sort((a, b) => {
+            const lbA = leaderboardData[a.id] || { upvotes: 0, downvotes: 0, score: 0, total_votes: 0 };
+            const lbB = leaderboardData[b.id] || { upvotes: 0, downvotes: 0, score: 0, total_votes: 0 };
+            switch (sortBy) {
+              case "votes":
+                return lbB.total_votes - lbA.total_votes || lbB.score - lbA.score;
+              case "score":
+                return lbB.score - lbA.score || lbB.upvotes - lbA.upvotes;
+              case "upvotes":
+                return lbB.upvotes - lbA.upvotes || lbB.total_votes - lbA.total_votes;
+              case "alpha_asc":
+                return a.name.localeCompare(b.name, "fr");
+              case "alpha_desc":
+                return b.name.localeCompare(a.name, "fr");
+              default:
+                return 0;
+            }
+          })
+          .map((site, index) => {
           const currentVote = globalVotes[site.id];
           const filledCount = categoryConfig.filter(
             ({ key }) => pendingCategoryVotes[`${site.id}_${key}`] > 0
