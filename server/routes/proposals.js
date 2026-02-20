@@ -38,14 +38,8 @@ function checkMagicBytes(filePath) {
   }
 }
 
-function normalizeIp(ip) {
-  if (!ip) return "";
-  const v4 = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
-  return v4 ? v4[1] : ip.trim();
-}
-
 function hashIp(ip) {
-  return createHash("sha256").update(ip || "").digest("hex");
+  return createHash("sha256").update((ip || "").trim()).digest("hex");
 }
 
 // ─── Multer config ────────────────────────────────────────────────────────────
@@ -148,7 +142,7 @@ router.post("/", submitLimiter, (req, res, next) => blockVpnProxy(req, res, next
   }
 
   const rawIp = req.ip || req.socket?.remoteAddress || "";
-  const ipHash = hashIp(normalizeIp(rawIp));
+  const ipHash = hashIp(rawIp);
   const proposedHost = extractHost(url.trim());
 
   try {
@@ -243,7 +237,7 @@ router.post("/report", reportLimiter, (req, res, next) => blockVpnProxy(req, res
   }
 
   const rawIp = req.ip || req.socket?.remoteAddress || "";
-  const ipHash = hashIp(normalizeIp(rawIp));
+  const ipHash = hashIp(rawIp);
 
   try {
     // Vérifier que le site existe
