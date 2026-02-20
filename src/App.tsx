@@ -25,6 +25,9 @@ function App() {
               <Route path="/propose" element={<ProposePage />} />
             </Routes>
           </main>
+          <footer className="border-t border-border/40 mt-12 py-6 text-center text-xs text-muted-foreground/50">
+            Made with <span className="text-red-500">♥</span> by MysticSaba &amp; VillagersYT
+          </footer>
           <Toaster richColors position="bottom-right" />
         </div>
       </BrowserRouter>

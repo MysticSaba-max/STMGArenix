@@ -51,7 +51,12 @@ function hashIp(ip) {
 
 async function checkIpReputation(ip) {
   const clean = ip.trim();
+
+  // ── Log IP reçue ──────────────────────────────────────────────────────────
+  console.log(`[VPN] IP reçue brute: "${ip}" → nettoyée: "${clean}"`);
+
   if (!clean || isLocalIp(clean)) {
+    console.log(`[VPN] IP locale détectée (${clean}) → skip (fail-open)`);
     return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
   }
 
@@ -60,8 +65,12 @@ async function checkIpReputation(ip) {
   // Cache 24h pour ne pas dépasser la limite de 1000 req/jour
   const cached = ipCache.get(ipHash);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    const age = Math.round((Date.now() - cached.timestamp) / 1000);
+    console.log(`[VPN] Cache HIT pour ${clean} (age: ${age}s) → isBad=${cached.result.isBad}`, cached.result);
     return cached.result;
   }
+
+  console.log(`[VPN] Cache MISS pour ${clean} → appel vpnapi.io`);
 
   try {
     const apiKey = getNextApiKey();
@@ -69,25 +78,38 @@ async function checkIpReputation(ip) {
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     // L'API vpnapi.io accepte IPv4 et IPv6 — on envoie l'IP brute directement.
-    const response = await fetch(
-      `https://vpnapi.io/api/${encodeURIComponent(clean)}?key=${apiKey}`,
-      { signal: controller.signal }
-    );
+    const url = `https://vpnapi.io/api/${encodeURIComponent(clean)}?key=${apiKey}`;
+    console.log(`[VPN] Requête: ${url.replace(apiKey, apiKey.slice(0, 6) + "…")}`);
+
+    const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
+
+    console.log(`[VPN] Réponse HTTP: ${response.status} pour ${clean}`);
 
     // Rate limit sur cette clé → fail-open (on laisse passer)
     if (response.status === 429) {
       const keyIdx = ((currentKeyIndex - 1 + VPN_API_KEYS.length) % VPN_API_KEYS.length) + 1;
-      console.warn(`[VPN] Clé API #${keyIdx} rate-limitée (429)`);
+      console.warn(`[VPN] Clé API #${keyIdx} rate-limitée (429) → fail-open`);
       return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
     }
 
     if (!response.ok) {
+      console.warn(`[VPN] Réponse non-ok (${response.status}) → fail-open`);
       return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
     }
 
     const data = await response.json();
     const sec = data.security || {};
+
+    console.log(`[VPN] Réponse vpnapi.io pour ${clean}:`, {
+      vpn: sec.vpn,
+      proxy: sec.proxy,
+      tor: sec.tor,
+      relay: sec.relay,
+      country: data.location?.country_code,
+      asn: data.network?.autonomous_system_number,
+      org: data.network?.autonomous_system_organization,
+    });
 
     const result = {
       isVpn: sec.vpn === true,
@@ -99,10 +121,12 @@ async function checkIpReputation(ip) {
       asn: data.network?.autonomous_system_number || null,
     };
 
+    console.log(`[VPN] Résultat final pour ${clean}: isBad=${result.isBad}`);
     ipCache.set(ipHash, { result, timestamp: Date.now() });
     return result;
-  } catch {
+  } catch (err) {
     // API indisponible → fail-open
+    console.warn(`[VPN] Erreur API pour ${clean}:`, err?.message || err);
     return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
   }
 }
@@ -112,7 +136,12 @@ export async function blockVpnProxy(req, res, next) {
     return next();
   }
 
-  const ip = (req.ip || req.socket?.remoteAddress || "").trim();
+  const rawIp = req.ip || req.socket?.remoteAddress || "";
+  const ip = rawIp.trim();
+
+  // Log Express trust proxy info pour diagnostiquer les faux positifs
+  console.log(`[VPN] === Nouvelle requête ${req.method} ${req.path} ===`);
+  console.log(`[VPN] req.ip="${req.ip}" | socket.remoteAddress="${req.socket?.remoteAddress}" | X-Forwarded-For="${req.headers["x-forwarded-for"] || "(absent)"}" | trust proxy="${req.app.get("trust proxy")}"`);
 
   try {
     const rep = await checkIpReputation(ip);
