@@ -19,7 +19,9 @@ import {
   Check,
   ShieldX,
   ShieldCheck,
+  Search,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface Site {
   id: number;
@@ -129,6 +131,7 @@ export default function VotePage() {
   const [pendingCategoryVotes, setPendingCategoryVotes] = useState<Record<string, number>>({});
   const [votingInProgress, setVotingInProgress] = useState<Record<string, boolean>>({});
   const [submittedSites, setSubmittedSites] = useState<Set<number>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Ref vers la promesse de vérification pour que les handlers puissent l'attendre
   const verificationRef = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -335,9 +338,25 @@ export default function VotePage() {
         )}
       </div>
 
+      {/* Barre de recherche */}
+      <div className="mb-6 animate-fade-in-up stagger-2">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Rechercher un site..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      </div>
+
       {/* Site Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {sites.map((site, index) => {
+        {sites.filter((site) =>
+          site.name.toLowerCase().includes(searchQuery.toLowerCase())
+        ).map((site, index) => {
           const currentVote = globalVotes[site.id];
           const filledCount = categoryConfig.filter(
             ({ key }) => pendingCategoryVotes[`${site.id}_${key}`] > 0
