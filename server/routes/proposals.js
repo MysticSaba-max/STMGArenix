@@ -42,6 +42,13 @@ function hashIp(ip) {
   return createHash("sha256").update((ip || "").trim()).digest("hex");
 }
 
+// Cloudflare injecte CF-Connecting-IP avec la vraie IP cliente.
+// Sans ça, req.ip contient une IP Cloudflare (ex: 172.71.x.x).
+function getRealIp(req) {
+  const cf = (req.headers["cf-connecting-ip"] || "").trim();
+  return cf || (req.ip || req.socket?.remoteAddress || "").trim();
+}
+
 // ─── Multer config ────────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
   destination: LOGOS_DIR,
@@ -141,8 +148,7 @@ router.post("/", submitLimiter, (req, res, next) => blockVpnProxy(req, res, next
     }
   }
 
-  const rawIp = req.ip || req.socket?.remoteAddress || "";
-  const ipHash = hashIp(rawIp);
+  const ipHash = hashIp(getRealIp(req));
   const proposedHost = extractHost(url.trim());
 
   try {
@@ -236,8 +242,7 @@ router.post("/report", reportLimiter, (req, res, next) => blockVpnProxy(req, res
     return res.status(400).json({ error: "Note trop longue (max 500 caractères)." });
   }
 
-  const rawIp = req.ip || req.socket?.remoteAddress || "";
-  const ipHash = hashIp(rawIp);
+  const ipHash = hashIp(getRealIp(req));
 
   try {
     // Vérifier que le site existe

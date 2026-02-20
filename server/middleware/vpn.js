@@ -136,12 +136,16 @@ export async function blockVpnProxy(req, res, next) {
     return next();
   }
 
-  const rawIp = req.ip || req.socket?.remoteAddress || "";
-  const ip = rawIp.trim();
+  // ── Priorité à CF-Connecting-IP (Cloudflare injecte la vraie IP cliente) ──
+  // Sans ça, req.ip contient l'IP d'un nœud Cloudflare (172.71.x.x / 104.x.x.x)
+  // qui est flaggée comme VPN par vpnapi.io — faux positif systématique.
+  const cfIp = req.headers["cf-connecting-ip"] || "";
+  const rawIp = cfIp.trim() || (req.ip || req.socket?.remoteAddress || "").trim();
+  const ip = rawIp;
 
   // Log Express trust proxy info pour diagnostiquer les faux positifs
   console.log(`[VPN] === Nouvelle requête ${req.method} ${req.path} ===`);
-  console.log(`[VPN] req.ip="${req.ip}" | socket.remoteAddress="${req.socket?.remoteAddress}" | X-Forwarded-For="${req.headers["x-forwarded-for"] || "(absent)"}" | trust proxy="${req.app.get("trust proxy")}"`);
+  console.log(`[VPN] CF-Connecting-IP="${cfIp || "(absent)"}" | req.ip="${req.ip}" | X-Forwarded-For="${req.headers["x-forwarded-for"] || "(absent)"}" → IP utilisée: "${ip}"`);
 
   try {
     const rep = await checkIpReputation(ip);
