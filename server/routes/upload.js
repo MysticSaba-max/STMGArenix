@@ -9,10 +9,11 @@ import { requireAdmin } from "../middleware/auth.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
 
-// Créer le dossier si nécessaire
+// Créer le dossier si nécessaire et s'assurer qu'il est accessible en écriture
 if (!fs.existsSync(LOGOS_DIR)) {
   fs.mkdirSync(LOGOS_DIR, { recursive: true });
 }
+try { fs.chmodSync(LOGOS_DIR, 0o755); } catch { /* ignore si pas propriétaire */ }
 
 // Types MIME autorisés
 const ALLOWED_MIME = new Set([

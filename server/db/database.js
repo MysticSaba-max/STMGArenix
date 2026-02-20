@@ -120,6 +120,21 @@ export async function initDatabase() {
     )
   `);
 
+  // Migrations pour la table site_proposals (ajout type / site_id / modification_note)
+  try {
+    await pool.execute(
+      "ALTER TABLE site_proposals ADD COLUMN type ENUM('new_site','modification') NOT NULL DEFAULT 'new_site'"
+    );
+  } catch { /* column already exists */ }
+  try {
+    await pool.execute("ALTER TABLE site_proposals ADD COLUMN site_id INT NULL DEFAULT NULL");
+  } catch { /* column already exists */ }
+  try {
+    await pool.execute(
+      "ALTER TABLE site_proposals ADD COLUMN modification_note VARCHAR(500) NULL DEFAULT NULL"
+    );
+  } catch { /* column already exists */ }
+
   // Nettoyage des vieilles entrées bot_attempts (> 30 jours)
   try {
     await pool.execute(

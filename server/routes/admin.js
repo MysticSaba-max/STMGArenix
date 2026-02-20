@@ -156,11 +156,28 @@ router.put("/proposals/:id/accept", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Cette proposition a déjà été traitée." });
     }
 
-    // Créer le site depuis la proposition
-    await pool.execute(
-      "INSERT INTO sites (name, url, logo_path) VALUES (?, ?, ?)",
-      [proposal.name, proposal.url, proposal.logo_path]
-    );
+    if (proposal.type === "modification") {
+      // Mettre à jour le site existant
+      if (!proposal.site_id) {
+        return res.status(400).json({ error: "Signalement sans site associé." });
+      }
+      const setClauses = [];
+      const values = [];
+      if (proposal.url && proposal.url.trim()) {
+        setClauses.push("url = ?");
+        values.push(proposal.url.trim());
+      }
+      if (setClauses.length > 0) {
+        values.push(proposal.site_id);
+        await pool.execute(`UPDATE sites SET ${setClauses.join(", ")} WHERE id = ?`, values);
+      }
+    } else {
+      // Créer le site depuis la proposition
+      await pool.execute(
+        "INSERT INTO sites (name, url, logo_path) VALUES (?, ?, ?)",
+        [proposal.name, proposal.url, proposal.logo_path]
+      );
+    }
 
     // Marquer comme acceptée
     await pool.execute(

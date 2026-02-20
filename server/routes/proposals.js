@@ -6,12 +6,14 @@ import fs from "fs";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import pool from "../db/database.js";
+import { blockVpnProxy } from "../middleware/vpn.js";
 
 const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
 
 if (!fs.existsSync(LOGOS_DIR)) {
   fs.mkdirSync(LOGOS_DIR, { recursive: true });
 }
+try { fs.chmodSync(LOGOS_DIR, 0o755); } catch { /* ignore si pas propriétaire */ }
 
 // ─── Validation fichiers (identique à upload.js) ─────────────────────────────
 const ALLOWED_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
@@ -106,8 +108,18 @@ router.post("/upload", uploadLimiter, (req, res) => {
   });
 });
 
+// Extrait le hostname normalisé d'une URL pour comparer sans tenir compte du protocole/www/slash final
+function extractHost(rawUrl) {
+  try {
+    const h = new URL(rawUrl).hostname.replace(/^www\./, "").toLowerCase();
+    return h;
+  } catch {
+    return rawUrl.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  }
+}
+
 // ─── POST /api/proposals ─ Soumettre une proposition ─────────────────────────
-router.post("/", submitLimiter, async (req, res) => {
+router.post("/", submitLimiter, (req, res, next) => blockVpnProxy(req, res, next), async (req, res) => {
   const { name, url, logo_path } = req.body;
 
   // Validation du nom
@@ -137,8 +149,31 @@ router.post("/", submitLimiter, async (req, res) => {
 
   const rawIp = req.ip || req.socket?.remoteAddress || "";
   const ipHash = hashIp(normalizeIp(rawIp));
+  const proposedHost = extractHost(url.trim());
 
   try {
+    // ── Vérification doublon : site déjà dans la liste ────────────────────────
+    const [existingSites] = await pool.execute("SELECT url FROM sites");
+    const siteExists = existingSites.some((row) => extractHost(row.url) === proposedHost);
+    if (siteExists) {
+      return res.status(400).json({
+        error: "Ce site est déjà présent dans la liste.",
+        code: "SITE_ALREADY_EXISTS",
+      });
+    }
+
+    // ── Vérification doublon : proposition déjà en attente ou acceptée ────────
+    const [existingProposals] = await pool.execute(
+      "SELECT url, status FROM site_proposals WHERE status IN ('pending', 'accepted')"
+    );
+    const proposalExists = existingProposals.some((row) => extractHost(row.url) === proposedHost);
+    if (proposalExists) {
+      return res.status(400).json({
+        error: "Ce site a déjà été proposé et est en cours d'examen.",
+        code: "PROPOSAL_ALREADY_EXISTS",
+      });
+    }
+
     // ── Vérification du délai 7 jours par IP ──────────────────────────────────
     const [recent] = await pool.execute(
       "SELECT submitted_at FROM site_proposals WHERE ip_hash = ? AND submitted_at > DATE_SUB(NOW(), INTERVAL 7 DAY) ORDER BY submitted_at DESC LIMIT 1",
@@ -163,6 +198,85 @@ router.post("/", submitLimiter, async (req, res) => {
     return res.status(201).json({ success: true });
   } catch (err) {
     console.error("[proposals] Error:", err);
+    return res.status(500).json({ error: "Erreur serveur." });
+  }
+});
+
+// ─── Rate limiter pour les signalements ───────────────────────────────────────
+const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1h
+  max: 5,
+  validate: { trustProxy: false },
+  message: { error: "Trop de tentatives, réessayez plus tard." },
+});
+
+// ─── POST /api/proposals/report ─ Signaler une modification sur un site ───────
+router.post("/report", reportLimiter, (req, res, next) => blockVpnProxy(req, res, next), async (req, res) => {
+  const { site_id, new_url, note } = req.body;
+
+  // Validation du site_id
+  const siteId = Number(site_id);
+  if (!siteId || isNaN(siteId) || siteId <= 0) {
+    return res.status(400).json({ error: "Identifiant de site invalide." });
+  }
+
+  // Au moins un champ doit être fourni
+  const hasNewUrl = new_url && typeof new_url === "string" && new_url.trim();
+  const hasNote = note && typeof note === "string" && note.trim();
+  if (!hasNewUrl && !hasNote) {
+    return res.status(400).json({ error: "Veuillez indiquer une nouvelle URL ou une note explicative." });
+  }
+
+  // Validation de la nouvelle URL (si fournie)
+  if (hasNewUrl) {
+    try {
+      const parsed = new URL(new_url.trim());
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+    } catch {
+      return res.status(400).json({ error: "Nouvelle URL invalide. Elle doit commencer par http:// ou https://." });
+    }
+  }
+
+  // Validation de la note
+  if (hasNote && note.trim().length > 500) {
+    return res.status(400).json({ error: "Note trop longue (max 500 caractères)." });
+  }
+
+  const rawIp = req.ip || req.socket?.remoteAddress || "";
+  const ipHash = hashIp(normalizeIp(rawIp));
+
+  try {
+    // Vérifier que le site existe
+    const [siteRows] = await pool.execute("SELECT id, name FROM sites WHERE id = ?", [siteId]);
+    if (!siteRows.length) {
+      return res.status(404).json({ error: "Site introuvable." });
+    }
+    const siteName = siteRows[0].name;
+
+    // Vérification du délai 48h par IP pour les signalements
+    const [recentReports] = await pool.execute(
+      "SELECT submitted_at FROM site_proposals WHERE ip_hash = ? AND type = 'modification' AND submitted_at > DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY submitted_at DESC LIMIT 1",
+      [ipHash]
+    );
+
+    if (recentReports.length > 0) {
+      const nextAllowed = new Date(new Date(recentReports[0].submitted_at).getTime() + 2 * 24 * 60 * 60 * 1000);
+      const diffHours = Math.ceil((nextAllowed - Date.now()) / (1000 * 60 * 60));
+      return res.status(429).json({
+        error: `Vous avez déjà signalé une modification récemment. Réessayez dans ${diffHours} heure${diffHours > 1 ? "s" : ""}.`,
+        code: "REPORT_RATE_LIMITED",
+        nextAllowed: nextAllowed.toISOString(),
+      });
+    }
+
+    await pool.execute(
+      "INSERT INTO site_proposals (name, url, logo_path, ip_hash, type, site_id, modification_note) VALUES (?, ?, '', ?, 'modification', ?, ?)",
+      [siteName, (new_url || "").trim(), ipHash, siteId, (note || "").trim()]
+    );
+
+    return res.status(201).json({ success: true });
+  } catch (err) {
+    console.error("[proposals/report] Error:", err);
     return res.status(500).json({ error: "Erreur serveur." });
   }
 });

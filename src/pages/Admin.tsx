@@ -58,6 +58,9 @@ interface Proposal {
   url: string;
   logo_path: string;
   status: "pending" | "accepted" | "rejected";
+  type: "new_site" | "modification";
+  site_id: number | null;
+  modification_note: string | null;
   submitted_at: string;
   reviewed_at: string | null;
 }
@@ -331,10 +334,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   async function handleProposalAction(id: number, action: "accept" | "reject") {
     setProposalActionLoading((prev) => ({ ...prev, [id]: true }));
+    const proposal = proposals.find((p) => p.id === id);
     try {
       if (action === "accept") {
         await api.acceptProposal(id);
-        toast.success("Proposition acceptée et site ajouté !");
+        toast.success(
+          proposal?.type === "modification"
+            ? "Signalement accepté et site mis à jour !"
+            : "Proposition acceptée et site ajouté !"
+        );
         fetchData();
       } else {
         await api.rejectProposal(id);
@@ -594,7 +602,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
             <PlusCircle className="w-5 h-5 text-primary" />
-            Propositions de sites
+            Propositions &amp; signalements
             {proposals.filter((p) => p.status === "pending").length > 0 && proposalFilter !== "pending" && (
               <span className="ml-1 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
                 {proposals.filter((p) => p.status === "pending").length}
@@ -622,10 +630,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         {proposals.length === 0 ? (
           <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground text-sm">
             {proposalFilter === "pending"
-              ? "Aucune proposition en attente."
+              ? "Aucune proposition ou signalement en attente."
               : proposalFilter === "accepted"
-              ? "Aucune proposition acceptée."
-              : "Aucune proposition refusée."}
+              ? "Aucune proposition ou signalement accepté."
+              : "Aucune proposition ou signalement refusé."}
           </div>
         ) : (
           <div className="rounded-xl border bg-card overflow-x-auto">
@@ -634,7 +642,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <TableRow>
                   <TableHead className="w-14">Icône</TableHead>
                   <TableHead>Nom</TableHead>
-                  <TableHead>URL</TableHead>
+                  <TableHead>Détails</TableHead>
                   <TableHead>Soumis le</TableHead>
                   {proposalFilter === "pending" && (
                     <TableHead className="text-right w-44">Actions</TableHead>
@@ -663,16 +671,53 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="font-medium whitespace-nowrap">{p.name}</TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span>{p.name}</span>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded font-medium w-fit ${
+                            p.type === "modification"
+                              ? "bg-amber-500/10 text-amber-600"
+                              : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          {p.type === "modification" ? "Modification" : "Nouveau site"}
+                        </span>
+                      </div>
+                    </TableCell>
                     <TableCell>
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-muted-foreground hover:text-primary transition-colors whitespace-nowrap"
-                      >
-                        {p.url.length > 40 ? p.url.slice(0, 40) + "…" : p.url}
-                      </a>
+                      <div className="flex flex-col gap-0.5 text-sm">
+                        {p.type === "new_site" ? (
+                          <a
+                            href={p.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-primary transition-colors whitespace-nowrap"
+                          >
+                            {p.url.length > 40 ? p.url.slice(0, 40) + "…" : p.url}
+                          </a>
+                        ) : (
+                          <>
+                            {p.url ? (
+                              <a
+                                href={p.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-amber-600 hover:text-amber-700 transition-colors whitespace-nowrap font-medium"
+                              >
+                                → {p.url.length > 36 ? p.url.slice(0, 36) + "…" : p.url}
+                              </a>
+                            ) : null}
+                            {p.modification_note ? (
+                              <span className="text-muted-foreground italic">
+                                {p.modification_note.length > 60
+                                  ? p.modification_note.slice(0, 60) + "…"
+                                  : p.modification_note}
+                              </span>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(p.submitted_at).toLocaleDateString("fr-FR")}

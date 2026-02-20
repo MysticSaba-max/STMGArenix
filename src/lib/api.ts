@@ -182,6 +182,9 @@ export const api = {
     return res.json();
   },
 
+  reportSiteModification: (data: { site_id: number; new_url?: string; note?: string }) =>
+    request<{ success: boolean }>("/proposals/report", { method: "POST", body: JSON.stringify(data) }),
+
   getProposals: (status?: string) =>
     request<any[]>(`/admin/proposals${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   acceptProposal: (id: number) =>
