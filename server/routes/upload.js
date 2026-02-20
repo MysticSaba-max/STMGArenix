@@ -7,13 +7,12 @@ import crypto from "crypto";
 import { requireAdmin } from "../middleware/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
+const LOGOS_DIR = path.join(__dirname, "../../public/logos");
 
-// Créer le dossier si nécessaire et s'assurer qu'il est accessible en écriture
+// Créer le dossier si nécessaire
 if (!fs.existsSync(LOGOS_DIR)) {
-  fs.mkdirSync(LOGOS_DIR, { recursive: true });
+  fs.mkdirSync(LOGOS_DIR, { recursive: true, mode: 0o755 });
 }
-try { fs.chmodSync(LOGOS_DIR, 0o755); } catch { /* ignore si pas propriétaire */ }
 
 // Types MIME autorisés
 const ALLOWED_MIME = new Set([
@@ -29,35 +28,19 @@ const ALLOWED_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
 // Magic bytes des formats images
 const MAGIC_BYTES = [
-  { bytes: [0xff, 0xd8, 0xff], mime: "image/jpeg" },          // JPEG
-  { bytes: [0x89, 0x50, 0x4e, 0x47], mime: "image/png" },     // PNG
-  { bytes: [0x47, 0x49, 0x46, 0x38], mime: "image/gif" },     // GIF
-  { bytes: [0x52, 0x49, 0x46, 0x46], mime: "image/webp" },    // RIFF (WebP)
+  { bytes: [0xff, 0xd8, 0xff] },          // JPEG
+  { bytes: [0x89, 0x50, 0x4e, 0x47] },    // PNG
+  { bytes: [0x47, 0x49, 0x46, 0x38] },    // GIF
+  { bytes: [0x52, 0x49, 0x46, 0x46] },    // WebP (RIFF)
 ];
 
-function checkMagicBytes(filePath) {
-  const fd = fs.openSync(filePath, "r");
-  const buffer = Buffer.alloc(12);
-  fs.readSync(fd, buffer, 0, 12, 0);
-  fs.closeSync(fd);
-
-  for (const { bytes } of MAGIC_BYTES) {
-    if (bytes.every((b, i) => buffer[i] === b)) return true;
-  }
-  return false;
+function checkMagicBytes(buffer) {
+  return MAGIC_BYTES.some(({ bytes }) => bytes.every((b, i) => buffer[i] === b));
 }
 
-const storage = multer.diskStorage({
-  destination: LOGOS_DIR,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueName = `${crypto.randomBytes(16).toString("hex")}${ext}`;
-    cb(null, uniqueName);
-  },
-});
-
+// Stockage en mémoire — on écrit le fichier manuellement pour gérer les erreurs EACCES
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 2 * 1024 * 1024, // 2 MB max
     files: 1,
@@ -89,14 +72,24 @@ router.post("/logo", requireAdmin, (req, res) => {
       return res.status(400).json({ error: "Aucun fichier fourni." });
     }
 
-    // Double vérification via magic bytes
-    const filePath = path.join(LOGOS_DIR, req.file.filename);
-    if (!checkMagicBytes(filePath)) {
-      fs.unlinkSync(filePath); // Supprimer le fichier malveillant
+    // Vérification magic bytes sur le buffer en mémoire
+    if (!checkMagicBytes(req.file.buffer)) {
       return res.status(400).json({ error: "Fichier invalide : ce n'est pas une image." });
     }
 
-    return res.json({ path: `/logos/${req.file.filename}` });
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const filename = `${crypto.randomBytes(16).toString("hex")}${ext}`;
+    const destPath = path.join(LOGOS_DIR, filename);
+
+    try {
+      fs.mkdirSync(LOGOS_DIR, { recursive: true, mode: 0o755 });
+      fs.writeFileSync(destPath, req.file.buffer, { mode: 0o644 });
+    } catch (writeErr) {
+      console.error("[upload] Erreur écriture fichier:", writeErr.message);
+      return res.status(500).json({ error: "Impossible de sauvegarder le fichier. Vérifiez les permissions du dossier public/logos." });
+    }
+
+    return res.json({ path: `/logos/${filename}` });
   });
 });
 

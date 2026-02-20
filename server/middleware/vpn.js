@@ -51,12 +51,7 @@ function hashIp(ip) {
 
 async function checkIpReputation(ip) {
   const clean = ip.trim();
-
-  // ── Log IP reçue ──────────────────────────────────────────────────────────
-  console.log(`[VPN] IP reçue brute: "${ip}" → nettoyée: "${clean}"`);
-
   if (!clean || isLocalIp(clean)) {
-    console.log(`[VPN] IP locale détectée (${clean}) → skip (fail-open)`);
     return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
   }
 
@@ -65,12 +60,8 @@ async function checkIpReputation(ip) {
   // Cache 24h pour ne pas dépasser la limite de 1000 req/jour
   const cached = ipCache.get(ipHash);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    const age = Math.round((Date.now() - cached.timestamp) / 1000);
-    console.log(`[VPN] Cache HIT pour ${clean} (age: ${age}s) → isBad=${cached.result.isBad}`, cached.result);
     return cached.result;
   }
-
-  console.log(`[VPN] Cache MISS pour ${clean} → appel vpnapi.io`);
 
   try {
     const apiKey = getNextApiKey();
@@ -78,13 +69,11 @@ async function checkIpReputation(ip) {
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     // L'API vpnapi.io accepte IPv4 et IPv6 — on envoie l'IP brute directement.
-    const url = `https://vpnapi.io/api/${encodeURIComponent(clean)}?key=${apiKey}`;
-    console.log(`[VPN] Requête: ${url.replace(apiKey, apiKey.slice(0, 6) + "…")}`);
-
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(
+      `https://vpnapi.io/api/${encodeURIComponent(clean)}?key=${apiKey}`,
+      { signal: controller.signal }
+    );
     clearTimeout(timeout);
-
-    console.log(`[VPN] Réponse HTTP: ${response.status} pour ${clean}`);
 
     // Rate limit sur cette clé → fail-open (on laisse passer)
     if (response.status === 429) {
@@ -94,22 +83,11 @@ async function checkIpReputation(ip) {
     }
 
     if (!response.ok) {
-      console.warn(`[VPN] Réponse non-ok (${response.status}) → fail-open`);
       return { isVpn: false, isProxy: false, isTor: false, isRelay: false, isBad: false };
     }
 
     const data = await response.json();
     const sec = data.security || {};
-
-    console.log(`[VPN] Réponse vpnapi.io pour ${clean}:`, {
-      vpn: sec.vpn,
-      proxy: sec.proxy,
-      tor: sec.tor,
-      relay: sec.relay,
-      country: data.location?.country_code,
-      asn: data.network?.autonomous_system_number,
-      org: data.network?.autonomous_system_organization,
-    });
 
     const result = {
       isVpn: sec.vpn === true,
@@ -121,7 +99,6 @@ async function checkIpReputation(ip) {
       asn: data.network?.autonomous_system_number || null,
     };
 
-    console.log(`[VPN] Résultat final pour ${clean}: isBad=${result.isBad}`);
     ipCache.set(ipHash, { result, timestamp: Date.now() });
     return result;
   } catch (err) {
@@ -140,12 +117,7 @@ export async function blockVpnProxy(req, res, next) {
   // Sans ça, req.ip contient l'IP d'un nœud Cloudflare (172.71.x.x / 104.x.x.x)
   // qui est flaggée comme VPN par vpnapi.io — faux positif systématique.
   const cfIp = req.headers["cf-connecting-ip"] || "";
-  const rawIp = cfIp.trim() || (req.ip || req.socket?.remoteAddress || "").trim();
-  const ip = rawIp;
-
-  // Log Express trust proxy info pour diagnostiquer les faux positifs
-  console.log(`[VPN] === Nouvelle requête ${req.method} ${req.path} ===`);
-  console.log(`[VPN] CF-Connecting-IP="${cfIp || "(absent)"}" | req.ip="${req.ip}" | X-Forwarded-For="${req.headers["x-forwarded-for"] || "(absent)"}" → IP utilisée: "${ip}"`);
+  const ip = cfIp.trim() || (req.ip || req.socket?.remoteAddress || "").trim();
 
   try {
     const rep = await checkIpReputation(ip);

@@ -26,16 +26,8 @@ const MAGIC_BYTES = [
   { bytes: [0x52, 0x49, 0x46, 0x46] }, // WebP (RIFF)
 ];
 
-function checkMagicBytes(filePath) {
-  try {
-    const fd = fs.openSync(filePath, "r");
-    const buffer = Buffer.alloc(12);
-    fs.readSync(fd, buffer, 0, 12, 0);
-    fs.closeSync(fd);
-    return MAGIC_BYTES.some(({ bytes }) => bytes.every((b, i) => buffer[i] === b));
-  } catch {
-    return false;
-  }
+function checkMagicBytes(buffer) {
+  return MAGIC_BYTES.some(({ bytes }) => bytes.every((b, i) => buffer[i] === b));
 }
 
 function hashIp(ip) {
@@ -49,17 +41,9 @@ function getRealIp(req) {
   return cf || (req.ip || req.socket?.remoteAddress || "").trim();
 }
 
-// ─── Multer config ────────────────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: LOGOS_DIR,
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${crypto.randomBytes(16).toString("hex")}${ext}`);
-  },
-});
-
+// ─── Multer config (mémoire → écriture manuelle pour éviter EACCES) ──────────
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -99,13 +83,23 @@ router.post("/upload", uploadLimiter, (req, res) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: "Aucun fichier fourni." });
 
-    const filePath = path.join(LOGOS_DIR, req.file.filename);
-    if (!checkMagicBytes(filePath)) {
-      fs.unlinkSync(filePath);
+    if (!checkMagicBytes(req.file.buffer)) {
       return res.status(400).json({ error: "Fichier invalide : ce n'est pas une image." });
     }
 
-    return res.json({ path: `/logos/${req.file.filename}` });
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const filename = `${crypto.randomBytes(16).toString("hex")}${ext}`;
+    const destPath = path.join(LOGOS_DIR, filename);
+
+    try {
+      fs.mkdirSync(LOGOS_DIR, { recursive: true, mode: 0o755 });
+      fs.writeFileSync(destPath, req.file.buffer, { mode: 0o644 });
+    } catch (writeErr) {
+      console.error("[proposals/upload] Erreur écriture:", writeErr.message);
+      return res.status(500).json({ error: "Impossible de sauvegarder le fichier." });
+    }
+
+    return res.json({ path: `/logos/${filename}` });
   });
 });
 
