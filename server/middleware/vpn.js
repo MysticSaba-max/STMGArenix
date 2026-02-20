@@ -118,11 +118,8 @@ export async function blockVpnProxy(req, res, next) {
     return next();
   }
 
-  // ── Priorité à CF-Connecting-IP (Cloudflare injecte la vraie IP cliente) ──
-  // Sans ça, req.ip contient l'IP d'un nœud Cloudflare (172.71.x.x / 104.x.x.x)
-  // qui est flaggée comme VPN par vpnapi.io — faux positif systématique.
-  const cfIp = req.headers["cf-connecting-ip"] || "";
-  const ip = cfIp.trim() || (req.ip || req.socket?.remoteAddress || "").trim();
+  // ── IP réelle via le middleware realIp (CF-Connecting-IP derrière Cloudflare) ──
+  const ip = req.realIp || (req.headers["cf-connecting-ip"] || "").trim() || (req.ip || req.socket?.remoteAddress || "").trim();
 
   try {
     const rep = await checkIpReputation(ip);

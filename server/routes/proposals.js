@@ -34,11 +34,9 @@ function hashIp(ip) {
   return createHash("sha256").update((ip || "").trim()).digest("hex");
 }
 
-// Cloudflare injecte CF-Connecting-IP avec la vraie IP cliente.
-// Sans ça, req.ip contient une IP Cloudflare (ex: 172.71.x.x).
+// Utilise req.realIp défini par le middleware global (CF-Connecting-IP + normalisation IPv6)
 function getRealIp(req) {
-  const cf = (req.headers["cf-connecting-ip"] || "").trim();
-  return cf || (req.ip || req.socket?.remoteAddress || "").trim();
+  return req.realIp || "";
 }
 
 // ─── Multer config (mémoire → écriture manuelle pour éviter EACCES) ──────────
@@ -55,17 +53,22 @@ const upload = multer({
 });
 
 // ─── Rate limiters ────────────────────────────────────────────────────────────
+// Clé basée sur l'IP réelle (CF-Connecting-IP derrière Cloudflare)
+const realIpKey = (req) => getRealIp(req);
+
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1h
   max: 5,
-  validate: { trustProxy: false },
+  keyGenerator: realIpKey,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
   message: { error: "Trop d'uploads, réessayez dans 1 heure." },
 });
 
 const submitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1h (le vrai délai 7j est vérifié en DB)
   max: 3,
-  validate: { trustProxy: false },
+  keyGenerator: realIpKey,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
   message: { error: "Trop de tentatives, réessayez plus tard." },
 });
 
@@ -200,7 +203,8 @@ router.post("/", submitLimiter, (req, res, next) => blockVpnProxy(req, res, next
 const reportLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1h
   max: 5,
-  validate: { trustProxy: false },
+  keyGenerator: realIpKey,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
   message: { error: "Trop de tentatives, réessayez plus tard." },
 });
 

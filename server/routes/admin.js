@@ -16,10 +16,12 @@ const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
 const router = Router();
 
 // Rate limiter strict pour la gestion des comptes
+// Clé basée sur l'IP réelle (CF-Connecting-IP derrière Cloudflare)
 const adminMgmtLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  validate: { trustProxy: false },
+  keyGenerator: (req) => req.realIp,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
   message: { error: "Trop de requêtes de gestion admin." },
 });
 

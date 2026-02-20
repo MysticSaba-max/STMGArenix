@@ -108,7 +108,7 @@ function maybeBlock(ipHash) {
 
 // ─── Middleware principal ─────────────────────────────────────────────────────
 export function detectBot(req, res, next) {
-  const ip = req.ip || req.socket?.remoteAddress || "";
+  const ip = req.realIp || req.ip || req.socket?.remoteAddress || "";
   const ipHash = hashIp(ip);
   const ua = req.headers["user-agent"] || "";
 
@@ -172,7 +172,7 @@ export function detectBot(req, res, next) {
 // ─── Vérification du score bot envoyé par le client ─────────────────────────
 export function requireLowBotScore(req, res, next) {
   const botScore = parseInt(req.headers["x-bot-score"] || "0", 10);
-  const ip = req.ip || req.socket?.remoteAddress || "";
+  const ip = req.realIp || req.ip || req.socket?.remoteAddress || "";
   const ipHash = hashIp(ip);
 
   if (isNaN(botScore)) return next();

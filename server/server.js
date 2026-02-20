@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import { initDatabase } from "./db/database.js";
@@ -25,6 +25,33 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || null;
 
 // ─── Trust proxy (Cloudflare / nginx) ───────────────────────────────────────
 app.set("trust proxy", 1);
+
+// ─── Extraction de l'IP réelle derrière Cloudflare ──────────────────────────
+// CF-Connecting-IP est injecté par Cloudflare avec la vraie IP du client.
+// Sans ça, req.ip contient une IP d'un nœud Cloudflare (172.71.x.x / 104.x.x.x).
+// Les adresses IPv6 sont normalisées en préfixe /64 pour éviter le contournement
+// du rate-limit (un même utilisateur possède typiquement un bloc /64).
+function normalizeIpv6(ip) {
+  if (!ip || !ip.includes(":") || ip.includes(".")) return ip; // IPv4 ou vide
+  const full = ip.replace(/^::ffff:/i, "");
+  if (full.includes(".")) return full; // IPv4-mapped
+  const parts = full.split(":");
+  // Expansion des :: pour obtenir les 8 groupes
+  const dblIdx = parts.indexOf("");
+  if (dblIdx !== -1) {
+    const fill = Array(8 - parts.filter(Boolean).length).fill("0000");
+    parts.splice(dblIdx, 1, ...fill);
+  }
+  // Garder les 4 premiers groupes (préfixe /64)
+  return parts.slice(0, 4).map((g) => g.padStart(4, "0")).join(":") + "::/64";
+}
+
+app.use((req, _res, next) => {
+  const cfIp = (req.headers["cf-connecting-ip"] || "").trim();
+  const raw = cfIp || req.ip || req.socket?.remoteAddress || "";
+  req.realIp = normalizeIpv6(raw.trim());
+  next();
+});
 
 // ─── Headers de sécurité HTTP ────────────────────────────────────────────────
 app.use((_req, res, next) => {
@@ -68,9 +95,70 @@ app.use(express.static(PUBLIC_DIR, {
 app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 
+// ─── Rate limiter global (toutes les routes API) ─────────────────────────────
+// Clé de rate-limit basée sur l'IP réelle (CF-Connecting-IP derrière Cloudflare)
+// req.realIp est défini par le middleware ci-dessus, avec normalisation IPv6 /64.
+const realIpKeyGenerator = (req) => req.realIp;
+
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: realIpKeyGenerator,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
+  message: { error: "Trop de requêtes, réessayez plus tard." },
+});
+
+// ─── Rate limiter strict pour les votes ──────────────────────────────────────
+const voteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Max 30 requêtes de vote par fenêtre
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: realIpKeyGenerator,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
+  message: { error: "Trop de votes, réessayez dans 15 minutes." },
+});
+
+// ─── Rate limiter très strict pour la vérification Turnstile ─────────────────
+const verifyLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 10, // Max 10 vérifications par fenêtre
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: realIpKeyGenerator,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
+  message: { error: "Trop de tentatives de vérification, réessayez dans 10 minutes." },
+});
+
+// ─── Rate limiter pour l'authentification admin ───────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: realIpKeyGenerator,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
+  message: { error: "Trop de tentatives de connexion." },
+});
+
+// ─── Rate limiter pour l'upload ───────────────────────────────────────────────
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Max 10 uploads par minute
+  keyGenerator: realIpKeyGenerator,
+  validate: { trustProxy: false, keyGeneratorIpFallback: false },
+  message: { error: "Trop d'uploads, réessayez dans 1 minute." },
+});
+
 // ─── Application des middlewares globaux ──────────────────────────────────────
+app.use("/api", globalLimiter);
 app.use("/api", detectBot);                // Détection bots UA/headers
 app.use("/api/votes", requireLowBotScore); // Score comportemental client
+app.use("/api/votes", voteLimiter);
+app.use("/api/votes/verify", verifyLimiter);
+app.use("/api/auth", authLimiter);
 
 // ─── Anti-VPN uniquement sur les routes de vote (async) ──────────────────────
 // On enveloppe pour que le middleware async soit appliqué correctement
@@ -87,7 +175,7 @@ app.use("/api/sites", sitesRoutes);
 app.use("/api/votes", votesRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/upload", uploadRoutes);
+app.use("/api/upload", uploadLimiter, uploadRoutes);
 app.use("/api/proposals", proposalsRoutes);
 
 // ─── 404 par défaut ──────────────────────────────────────────────────────────
