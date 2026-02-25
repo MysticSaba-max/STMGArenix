@@ -5,7 +5,6 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 const SESSION_COOKIE = "vote_session";
 
-let cachedFingerprint: string | null = null;
 let cachedBotScore = 0;
 
 function getSessionToken(): string | null {
@@ -31,7 +30,6 @@ function isSessionError(message: string): boolean {
 }
 
 async function renewSession(): Promise<boolean> {
-  if (!cachedFingerprint) return false;
   try {
     const [turnstileToken, botSignals] = await Promise.all([
       getTurnstileToken(),
@@ -42,7 +40,7 @@ async function renewSession(): Promise<boolean> {
     const res = await fetch(`${API_BASE}/votes/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: turnstileToken, fingerprint: cachedFingerprint, botSignals }),
+      body: JSON.stringify({ token: turnstileToken, botSignals }),
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -106,14 +104,9 @@ export const api = {
     request<void>(`/sites/${id}`, { method: "DELETE" }),
 
   hasSession: () => !!getSessionToken(),
-  setFingerprint: (fp: string) => {
-    cachedFingerprint = fp;
-  },
 
   // Vérification Turnstile + envoi des signaux bot au serveur
-  verifyTurnstile: async (fingerprint: string) => {
-    cachedFingerprint = fingerprint;
-
+  verifyTurnstile: async () => {
     const [turnstileToken, botSignals] = await Promise.all([
       getTurnstileToken(),
       collectBotSignals(),
@@ -122,21 +115,20 @@ export const api = {
 
     const result = await request<{ sessionToken: string }>("/votes/verify", {
       method: "POST",
-      body: JSON.stringify({ token: turnstileToken, fingerprint, botSignals }),
+      body: JSON.stringify({ token: turnstileToken, botSignals }),
     });
     setSessionToken(result.sessionToken);
     return result;
   },
 
-  vote: (data: { site_id: number; vote_type: string; fingerprint: string }) =>
+  vote: (data: { site_id: number; vote_type: string }) =>
     request<any>("/votes", { method: "POST", body: JSON.stringify(data) }),
   voteCategories: (data: {
     site_id: number;
     ratings: Record<string, number>;
-    fingerprint: string;
   }) => request<any>("/votes/categories", { method: "POST", body: JSON.stringify(data) }),
-  getMyVotes: (fingerprint: string) =>
-    request<any>("/votes/mine", { method: "POST", body: JSON.stringify({ fingerprint }) }),
+  getMyVotes: () =>
+    request<any>("/votes/mine", { method: "POST", body: JSON.stringify({}) }),
   getLeaderboard: () => request<any[]>("/leaderboard"),
   getCategoryLeaderboard: () => request<any>("/leaderboard/categories"),
   login: (username: string, password: string) =>
