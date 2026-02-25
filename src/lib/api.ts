@@ -1,11 +1,11 @@
 import { getTurnstileToken } from "./turnstile";
-import { collectBotSignals, computeBotScore } from "./botDetection";
+import { collectBotSignals } from "./botDetection";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 const SESSION_COOKIE = "vote_session";
 
-let cachedBotScore = 0;
+let cachedFingerprint: string | null = null;
 
 function getSessionToken(): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${SESSION_COOKIE}=([^;]*)`));
@@ -30,17 +30,16 @@ function isSessionError(message: string): boolean {
 }
 
 async function renewSession(): Promise<boolean> {
+  if (!cachedFingerprint) return false;
   try {
     const [turnstileToken, botSignals] = await Promise.all([
       getTurnstileToken(),
       collectBotSignals(),
     ]);
-    cachedBotScore = computeBotScore(botSignals);
-
     const res = await fetch(`${API_BASE}/votes/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: turnstileToken, botSignals }),
+      body: JSON.stringify({ token: turnstileToken, fingerprint: cachedFingerprint, botSignals }),
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -59,7 +58,6 @@ async function request<T>(path: string, options?: RequestInit, _retry = false): 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    "x-bot-score": String(cachedBotScore),
   };
 
   const session = getSessionToken();
@@ -104,31 +102,35 @@ export const api = {
     request<void>(`/sites/${id}`, { method: "DELETE" }),
 
   hasSession: () => !!getSessionToken(),
+  setFingerprint: (fp: string) => {
+    cachedFingerprint = fp;
+  },
 
   // Vérification Turnstile + envoi des signaux bot au serveur
-  verifyTurnstile: async () => {
+  verifyTurnstile: async (fingerprint: string) => {
+    cachedFingerprint = fingerprint;
+
     const [turnstileToken, botSignals] = await Promise.all([
       getTurnstileToken(),
       collectBotSignals(),
     ]);
-    cachedBotScore = computeBotScore(botSignals);
-
     const result = await request<{ sessionToken: string }>("/votes/verify", {
       method: "POST",
-      body: JSON.stringify({ token: turnstileToken, botSignals }),
+      body: JSON.stringify({ token: turnstileToken, fingerprint, botSignals }),
     });
     setSessionToken(result.sessionToken);
     return result;
   },
 
-  vote: (data: { site_id: number; vote_type: string }) =>
+  vote: (data: { site_id: number; vote_type: string; fingerprint: string }) =>
     request<any>("/votes", { method: "POST", body: JSON.stringify(data) }),
   voteCategories: (data: {
     site_id: number;
     ratings: Record<string, number>;
+    fingerprint: string;
   }) => request<any>("/votes/categories", { method: "POST", body: JSON.stringify(data) }),
-  getMyVotes: () =>
-    request<any>("/votes/mine", { method: "POST", body: JSON.stringify({}) }),
+  getMyVotes: (fingerprint: string) =>
+    request<any>("/votes/mine", { method: "POST", body: JSON.stringify({ fingerprint }) }),
   getLeaderboard: () => request<any[]>("/leaderboard"),
   getCategoryLeaderboard: () => request<any>("/leaderboard/categories"),
   login: (username: string, password: string) =>

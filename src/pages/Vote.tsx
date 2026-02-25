@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
+import { getFingerprint } from "@/lib/fingerprint";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -165,6 +166,7 @@ export default function VotePage() {
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
   const [blockError, setBlockError] = useState<{ message: string; code: string } | null>(null);
+  const [fingerprint, setFingerprint] = useState("");
   const [globalVotes, setGlobalVotes] = useState<Record<number, "up" | "down">>({});
   const [categoryVotes, setCategoryVotes] = useState<Record<string, number>>({});
   const [pendingCategoryVotes, setPendingCategoryVotes] = useState<Record<string, number>>({});
@@ -212,13 +214,17 @@ export default function VotePage() {
   useEffect(() => {
     async function init() {
       try {
+        const fp = await getFingerprint();
+        setFingerprint(fp);
+        api.setFingerprint(fp);
+
         // ── Lancer la vérification en arrière-plan (sans await immédiat) ──────
         if (api.hasSession()) {
           setVerified(true);
           setVerifying(false);
           verificationRef.current = Promise.resolve(true);
         } else {
-          verificationRef.current = api.verifyTurnstile()
+          verificationRef.current = api.verifyTurnstile(fp)
             .then(() => {
               setVerified(true);
               setVerifying(false);
@@ -237,7 +243,7 @@ export default function VotePage() {
         // ── Charger sites + votes + leaderboard immédiatement, sans attendre Turnstile ──────
         const [sitesData, votesData, lbData] = await Promise.all([
           api.getSites(),
-          api.getMyVotes(),
+          api.getMyVotes(fp),
           api.getLeaderboard(),
         ]);
 
@@ -297,7 +303,7 @@ export default function VotePage() {
           return;
         }
 
-        const result = await api.vote({ site_id: siteId, vote_type: voteType });
+        const result = await api.vote({ site_id: siteId, vote_type: voteType, fingerprint });
         if (result.action === "removed") {
           setGlobalVotes((prev) => {
             const next = { ...prev };
@@ -315,7 +321,7 @@ export default function VotePage() {
         setVotingInProgress((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [votingInProgress, ensureVerified]
+    [fingerprint, votingInProgress, ensureVerified]
   );
 
   const handlePendingCategoryChange = useCallback(
@@ -344,7 +350,7 @@ export default function VotePage() {
           const score = pendingCategoryVotes[`${siteId}_${catKey}`];
           if (score) ratings[catKey] = score;
         }
-        await api.voteCategories({ site_id: siteId, ratings });
+        await api.voteCategories({ site_id: siteId, ratings, fingerprint });
         setCategoryVotes((prev) => {
           const next = { ...prev };
           for (const { key: catKey } of categoryConfig) {
@@ -361,7 +367,7 @@ export default function VotePage() {
         setVotingInProgress((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [pendingCategoryVotes, votingInProgress, ensureVerified]
+    [fingerprint, pendingCategoryVotes, votingInProgress, ensureVerified]
   );
 
   // ── Blocage sécurité (VPN / bot détecté — y compris pendant le remplissage) ─
