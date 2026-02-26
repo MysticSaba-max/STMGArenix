@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
+import { UpdatesPopover, UpdatesList } from "./UpdatesPopover";
 import { cn } from "@/lib/utils";
 import { Tv, Trophy, Star, Vote, Menu, PlusCircle } from "lucide-react";
 import {
@@ -32,15 +33,15 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-2 font-bold text-xl">
-          <Tv className="h-6 w-6 text-primary" />
+        <Link to="/" className="flex items-center gap-2 font-bold text-lg sm:text-xl shrink-0">
+          <Tv className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
           <span>
             STMG<span className="text-primary">Arenix</span>
           </span>
         </Link>
 
         {/* Desktop navigation */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-1">
           {navLinks.map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
@@ -58,14 +59,17 @@ export function Navbar() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <UpdatesPopover />
+          <div className="hidden lg:block">
+            <ThemeToggle />
+          </div>
 
           {/* Mobile hamburger menu */}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <button
-                className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                className="lg:hidden inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 aria-label="Ouvrir le menu"
               >
                 <Menu className="h-6 w-6" />
@@ -97,12 +101,18 @@ export function Navbar() {
                     {label}
                   </button>
                 ))}
-
               </nav>
+
+              <div className="border-t border-border/40 mt-4 pt-4 px-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-4">Nouveautés</p>
+                <div className="px-4 max-h-48 overflow-y-auto">
+                  <UpdatesList />
+                </div>
+              </div>
 
               <div className="mt-auto border-t border-border/40 p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Theme</span>
+                  <span className="text-sm text-muted-foreground">Thème</span>
                   <ThemeToggle />
                 </div>
               </div>

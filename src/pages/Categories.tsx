@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Ban, MousePointerClick, Link as LinkIcon, Library, MonitorPlay, Loader2, Crown, Medal, Award, Star, Search, ArrowUpDown } from "lucide-react";
+import { Ban, MousePointerClick, Link as LinkIcon, Library, MonitorPlay, Loader2, Crown, Medal, Award, Star, Search, ArrowUpDown, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 interface CategoryEntry {
@@ -24,6 +24,65 @@ interface CategoryEntry {
 
 interface CategoryData {
   [category: string]: CategoryEntry[];
+}
+
+type RankingMethod = "raw" | "bayesian" | "wilson";
+
+const BAYESIAN_M = 10;
+
+const methodInfo: Record<RankingMethod, { label: string; description: string }> = {
+  raw: {
+    label: "Score brut",
+    description: "Moyenne simple des notes. Peut être trompeuse avec peu de votes.",
+  },
+  bayesian: {
+    label: "Bayésien",
+    description: "Moyenne pondérée (formule IMDb). Les sites avec peu de votes sont tirés vers la moyenne globale de la catégorie.",
+  },
+  wilson: {
+    label: "Wilson",
+    description: "Borne inférieure de confiance à 95%. Estimation pessimiste réaliste — pénalise fortement les petits échantillons.",
+  },
+};
+
+function computeCategoryBayesian(entries: CategoryEntry[]): Map<number, number> {
+  const totalWeighted = entries.reduce((sum, e) => sum + Number(e.avg_score) * Number(e.vote_count), 0);
+  const totalVotes = entries.reduce((sum, e) => sum + Number(e.vote_count), 0);
+  const C = totalVotes > 0 ? totalWeighted / totalVotes : 3;
+
+  const scores = new Map<number, number>();
+  for (const entry of entries) {
+    const v = Number(entry.vote_count);
+    const R = Number(entry.avg_score);
+    if (v === 0) {
+      scores.set(entry.id, C);
+      continue;
+    }
+    const WR = (v / (v + BAYESIAN_M)) * R + (BAYESIAN_M / (v + BAYESIAN_M)) * C;
+    scores.set(entry.id, WR);
+  }
+  return scores;
+}
+
+function computeCategoryWilson(entries: CategoryEntry[]): Map<number, number> {
+  const z = 1.96;
+  const scores = new Map<number, number>();
+
+  for (const entry of entries) {
+    const n = Number(entry.vote_count);
+    if (n === 0) {
+      scores.set(entry.id, 0);
+      continue;
+    }
+    // Normaliser la note 1-5 vers 0-1
+    const p = (Number(entry.avg_score) - 1) / 4;
+    const lower =
+      (p + (z * z) / (2 * n) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n)) /
+      (1 + (z * z) / n);
+    // Reconvertir 0-1 vers 1-5
+    scores.set(entry.id, Math.max(1, lower * 4 + 1));
+  }
+  return scores;
 }
 
 const categories = [
@@ -115,6 +174,7 @@ export default function Categories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<CatSortKey>("avg_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [method, setMethod] = useState<RankingMethod>("raw");
 
   function toggleSort(key: CatSortKey) {
     if (sortKey === key) {
@@ -132,6 +192,29 @@ export default function Categories() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Pré-calculer les scores Bayésien et Wilson par catégorie
+  const bayesianByCategory = useMemo(() => {
+    const result: Record<string, Map<number, number>> = {};
+    for (const cat of categories) {
+      result[cat.key] = computeCategoryBayesian(data[cat.key] || []);
+    }
+    return result;
+  }, [data]);
+
+  const wilsonByCategory = useMemo(() => {
+    const result: Record<string, Map<number, number>> = {};
+    for (const cat of categories) {
+      result[cat.key] = computeCategoryWilson(data[cat.key] || []);
+    }
+    return result;
+  }, [data]);
+
+  const getScore = useCallback((catKey: string, entry: CategoryEntry): number => {
+    if (method === "bayesian") return bayesianByCategory[catKey]?.get(entry.id) ?? Number(entry.avg_score);
+    if (method === "wilson") return wilsonByCategory[catKey]?.get(entry.id) ?? 0;
+    return Number(entry.avg_score);
+  }, [method, bayesianByCategory, wilsonByCategory]);
+
   return (
     <div className="container mx-auto px-4 py-6 sm:py-12">
       {/* Page Header */}
@@ -140,6 +223,32 @@ export default function Categories() {
         <p className="mt-3 text-muted-foreground max-w-2xl">
           Comparez les sites de streaming selon différents critères de qualité
         </p>
+      </div>
+
+      {/* Sélecteur de méthode de classement */}
+      <div className="mb-6 animate-fade-in-up stagger-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground shrink-0">Méthode de classement :</span>
+          <div className="flex bg-muted rounded-lg p-1 gap-1">
+            {(Object.keys(methodInfo) as RankingMethod[]).map((key) => (
+              <button
+                key={key}
+                onClick={() => { setMethod(key); setSortKey("avg_score"); setSortDir("desc"); }}
+                className={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                  method === key
+                    ? "bg-background shadow-sm font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {methodInfo[key].label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-start gap-2 mt-2.5 text-xs text-muted-foreground">
+          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <p>{methodInfo[method].description}</p>
+        </div>
       </div>
 
       {loading ? (
@@ -179,8 +288,14 @@ export default function Categories() {
                 entry.name.toLowerCase().includes(searchQuery.toLowerCase())
               )
               .sort((a, b) => {
-                const av = Number(a[sortKey]);
-                const bv = Number(b[sortKey]);
+                let av: number, bv: number;
+                if (sortKey === "avg_score") {
+                  av = getScore(key, a);
+                  bv = getScore(key, b);
+                } else {
+                  av = Number(a[sortKey]);
+                  bv = Number(b[sortKey]);
+                }
                 return sortDir === "desc" ? bv - av : av - bv;
               });
             return (
@@ -199,7 +314,7 @@ export default function Categories() {
                           onClick={() => toggleSort("avg_score")}
                         >
                           <div className="flex items-center gap-1">
-                            Score Moyen
+                            {method === "raw" ? "Score Moyen" : method === "bayesian" ? "Score Bayésien" : "Score Wilson"}
                             <ArrowUpDown className={`w-3 h-3 ${sortKey === "avg_score" ? "text-primary" : "text-muted-foreground/50"}`} />
                           </div>
                         </TableHead>
@@ -243,7 +358,7 @@ export default function Categories() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <StarDisplay score={Number(entry.avg_score)} />
+                                <StarDisplay score={getScore(key, entry)} />
                               </TableCell>
                               <TableCell>
                                 <span className="text-muted-foreground">{Number(entry.vote_count)}</span>
