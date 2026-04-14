@@ -174,7 +174,7 @@ export default function Categories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<CatSortKey>("avg_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [method, setMethod] = useState<RankingMethod>("raw");
+  const [method, setMethod] = useState<RankingMethod>("wilson");
 
   function toggleSort(key: CatSortKey) {
     if (sortKey === key) {

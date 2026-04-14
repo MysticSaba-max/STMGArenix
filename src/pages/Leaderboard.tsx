@@ -135,7 +135,7 @@ export default function Leaderboard() {
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [method, setMethod] = useState<RankingMethod>("raw");
+  const [method, setMethod] = useState<RankingMethod>("wilson");
 
   useEffect(() => {
     api.getLeaderboard()
