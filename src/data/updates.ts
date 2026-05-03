@@ -21,6 +21,17 @@ export const tagConfig: Record<UpdateEntry["tag"], TagConfig> = {
 
 export const updates: UpdateEntry[] = [
   {
+    date: "3 mai 2026",
+    tag: "improvement",
+    title: "STMG TrustScore",
+    items: [
+      "Score unique inspiré de Trustpilot (remplace les 4 méthodes)",
+      "Lissage bayésien + borne de confiance Wilson",
+      "Décroissance temporelle des votes (demi-vie d'un an)",
+      "Sites avec moins de 5 votes marqués « Nouveau »",
+    ],
+  },
+  {
     date: "26 fév 2026",
     tag: "new",
     title: "Classement intelligent",

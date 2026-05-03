@@ -44,7 +44,7 @@ setInterval(() => {
 
 // ─── Route login ──────────────────────────────────────────────────────────────
 router.post("/login", async (req, res) => {
-  const ip = req.ip || req.socket?.remoteAddress || "";
+  const ip = req.realIp || req.clientIp || req.ip || req.socket?.remoteAddress || "";
   const ipHash = hashIp(ip);
 
   // Honeypot côté serveur : si le champ "website" est rempli → bot

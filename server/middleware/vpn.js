@@ -119,7 +119,7 @@ export async function blockVpnProxy(req, res, next) {
   }
 
   // ── IP réelle via le middleware realIp (CF-Connecting-IP derrière Cloudflare) ──
-  const ip = req.realIp || (req.headers["cf-connecting-ip"] || "").trim() || (req.ip || req.socket?.remoteAddress || "").trim();
+  const ip = req.clientIp || (req.headers["cf-connecting-ip"] || "").trim() || (req.ip || req.socket?.remoteAddress || "").trim() || req.realIp || "";
 
   try {
     const rep = await checkIpReputation(ip);

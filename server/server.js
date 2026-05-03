@@ -11,9 +11,10 @@ import votesRoutes from "./routes/votes.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
 import adminRoutes from "./routes/admin.js";
 import uploadRoutes from "./routes/upload.js";
-import { detectBot, requireLowBotScore } from "./middleware/antibot.js";
+import { detectBot } from "./middleware/antibot.js";
 import { blockVpnProxy } from "./middleware/vpn.js";
 import proposalsRoutes from "./routes/proposals.js";
+import { getClientIp, normalizeIpForSubnetLimits } from "./utils/ip.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,9 +48,9 @@ function normalizeIpv6(ip) {
 }
 
 app.use((req, _res, next) => {
-  const cfIp = (req.headers["cf-connecting-ip"] || "").trim();
-  const raw = cfIp || req.ip || req.socket?.remoteAddress || "";
-  req.realIp = normalizeIpv6(raw.trim());
+  const clientIp = getClientIp(req);
+  req.clientIp = clientIp;
+  req.realIp = normalizeIpForSubnetLimits(clientIp);
   next();
 });
 
@@ -155,7 +156,6 @@ const uploadLimiter = rateLimit({
 // ─── Application des middlewares globaux ──────────────────────────────────────
 app.use("/api", globalLimiter);
 app.use("/api", detectBot);                // Détection bots UA/headers
-app.use("/api/votes", requireLowBotScore); // Score comportemental client
 app.use("/api/votes", voteLimiter);
 app.use("/api/votes/verify", verifyLimiter);
 app.use("/api/auth", authLimiter);

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import {
@@ -9,7 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ThumbsUp, ThumbsDown, Loader2, Crown, Medal, Award, ArrowUpDown, Info } from "lucide-react";
+import { ScoreTooltip } from "@/components/ScoreTooltip";
+import { ThumbsUp, ThumbsDown, Loader2, Crown, Medal, Award, ArrowUpDown, Info, Sparkles } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { TrustScoreInfoDialog } from "@/components/TrustScoreInfoDialog";
 
 interface LeaderboardEntry {
   id: number;
@@ -19,80 +22,13 @@ interface LeaderboardEntry {
   score: number;
   upvotes: number;
   downvotes: number;
+  weighted_count: number;
+  trust_score: number;
+  has_enough_votes: boolean;
 }
 
-type SortKey = "score" | "upvotes" | "downvotes" | "total";
+type SortKey = "trust_score" | "upvotes" | "downvotes" | "total";
 type SortDir = "asc" | "desc";
-type RankingMethod = "raw" | "bayesian" | "weighted" | "wilson";
-
-const BAYESIAN_PRIOR_ALPHA = 2;
-const BAYESIAN_PRIOR_BETA = 8;
-const WEIGHTED_M = 10;
-const WEIGHTED_C = 0.5;
-
-const methodInfo: Record<RankingMethod, { label: string; description: string; scoreLabel: string }> = {
-  raw: {
-    label: "Score brut",
-    description: "Upvotes − Downvotes. Simple mais favorise les sites avec beaucoup de votes, peu importe le ratio.",
-    scoreLabel: "Score",
-  },
-  bayesian: {
-    label: "Bayésien",
-    description: "Lissage Beta-Binomial avec a priori pessimiste (2 pseudo-upvotes, 8 pseudo-downvotes). Sans données, un site démarre à 20% et converge progressivement vers son vrai ratio à mesure que les votes s'accumulent.",
-    scoreLabel: "Score Bayésien",
-  },
-  weighted: {
-    label: "Pondérée",
-    description: "Moyenne pondérée (formule IMDb) avec a priori neutre à 50%. Combine le ratio réel du site et un score de référence, pondérés par le nombre de votes : plus un site a de votes, plus son ratio compte. Sans données, un site démarre à 50%.",
-    scoreLabel: "Moyenne pondérée",
-  },
-  wilson: {
-    label: "Wilson",
-    description: "Borne inférieure de l'intervalle de confiance à 95% (formule Reddit). Le score le plus pessimiste réaliste — pénalise fortement les petits échantillons.",
-    scoreLabel: "Score Wilson",
-  },
-};
-
-function computeBayesianScores(data: LeaderboardEntry[]): Map<number, number> {
-  const scores = new Map<number, number>();
-  for (const site of data) {
-    const up = Number(site.upvotes);
-    const down = Number(site.downvotes);
-    const score = (up + BAYESIAN_PRIOR_ALPHA) / (up + down + BAYESIAN_PRIOR_ALPHA + BAYESIAN_PRIOR_BETA);
-    scores.set(site.id, score);
-  }
-  return scores;
-}
-
-function computeWeightedScores(data: LeaderboardEntry[]): Map<number, number> {
-  const scores = new Map<number, number>();
-  for (const site of data) {
-    const up = Number(site.upvotes);
-    const down = Number(site.downvotes);
-    const score = (up + WEIGHTED_M * WEIGHTED_C) / (up + down + WEIGHTED_M);
-    scores.set(site.id, score);
-  }
-  return scores;
-}
-
-function computeWilsonScores(data: LeaderboardEntry[]): Map<number, number> {
-  const z = 1.96;
-  const scores = new Map<number, number>();
-
-  for (const site of data) {
-    const n = Number(site.upvotes) + Number(site.downvotes);
-    if (n === 0) {
-      scores.set(site.id, 0);
-      continue;
-    }
-    const p = Number(site.upvotes) / n;
-    const lower =
-      (p + (z * z) / (2 * n) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n)) /
-      (1 + (z * z) / n);
-    scores.set(site.id, Math.max(0, lower));
-  }
-  return scores;
-}
 
 function SiteLogo({ site }: { site: { name: string; logo_path: string } }) {
   const [imgError, setImgError] = useState(false);
@@ -113,7 +49,10 @@ function SiteLogo({ site }: { site: { name: string; logo_path: string } }) {
   );
 }
 
-function RankBadge({ rank }: { rank: number }) {
+function RankBadge({ rank, dimmed }: { rank: number; dimmed?: boolean }) {
+  if (dimmed) {
+    return <span className="text-muted-foreground/50 font-medium w-8 text-center block">—</span>;
+  }
   if (rank === 1) {
     return (
       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500/10">
@@ -138,6 +77,39 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="text-muted-foreground font-medium w-8 text-center block">{rank}</span>;
 }
 
+function ScoreDisplay({ site }: { site: LeaderboardEntry }) {
+  const pct = Number(site.trust_score) * 100;
+  const color =
+    pct >= 60 ? "text-green-500" : pct < 40 ? "text-red-500" : "text-muted-foreground";
+  const total = Number(site.upvotes) + Number(site.downvotes);
+  const rawRatio = total > 0 ? (Number(site.upvotes) / total) * 100 : 0;
+
+  return (
+    <ScoreTooltip
+      contentClassName="px-3 py-2"
+      content={
+        <div className="text-xs space-y-1">
+          <div>
+            <span className="text-muted-foreground">TrustScore : </span>
+            <span className="font-semibold">{pct.toFixed(2)}%</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Ratio brut : </span>
+            <span className="font-semibold">
+              {rawRatio.toFixed(1)}% ({Number(site.upvotes)} / {total})
+            </span>
+          </div>
+        </div>
+      }
+    >
+      <span className={`font-bold text-lg inline-flex items-center gap-1.5 ${color}`}>
+        {pct.toFixed(1)}%
+        <Info className="w-3 h-3 opacity-50 shrink-0" />
+      </span>
+    </ScoreTooltip>
+  );
+}
+
 export default function Leaderboard() {
   useSEO({
     title: "Classement des Sites de Streaming - Top Sites Streaming 2026",
@@ -148,9 +120,8 @@ export default function Leaderboard() {
 
   const [data, setData] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("score");
+  const [sortKey, setSortKey] = useState<SortKey>("trust_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [method, setMethod] = useState<RankingMethod>("wilson");
 
   useEffect(() => {
     api.getLeaderboard()
@@ -159,24 +130,17 @@ export default function Leaderboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  const bayesianScores = useMemo(() => computeBayesianScores(data), [data]);
-  const weightedScores = useMemo(() => computeWeightedScores(data), [data]);
-  const wilsonScores = useMemo(() => computeWilsonScores(data), [data]);
-
-  function getMethodScore(site: LeaderboardEntry): number {
-    if (method === "bayesian") return bayesianScores.get(site.id) ?? 0;
-    if (method === "weighted") return weightedScores.get(site.id) ?? 0;
-    if (method === "wilson") return wilsonScores.get(site.id) ?? 0;
-    return Number(site.score);
-  }
-
   const sorted = useMemo(() => {
     const arr = [...data];
     arr.sort((a, b) => {
+      // Sites peu votés toujours en bas
+      if (a.has_enough_votes !== b.has_enough_votes) {
+        return a.has_enough_votes ? -1 : 1;
+      }
       let av: number, bv: number;
-      if (sortKey === "score") {
-        av = getMethodScore(a);
-        bv = getMethodScore(b);
+      if (sortKey === "trust_score") {
+        av = Number(a.trust_score);
+        bv = Number(b.trust_score);
       } else if (sortKey === "total") {
         av = Number(a.upvotes) + Number(a.downvotes);
         bv = Number(b.upvotes) + Number(b.downvotes);
@@ -192,18 +156,29 @@ export default function Leaderboard() {
       return Number(b.upvotes) - Number(a.upvotes);
     });
     return arr;
-  }, [data, sortKey, sortDir, method, bayesianScores, weightedScores, wilsonScores]);
+  }, [data, sortKey, sortDir]);
+
+  const ranked = sorted.filter((s) => s.has_enough_votes);
+  const newcomers = sorted.filter((s) => !s.has_enough_votes);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
-      setSortDir(d => d === "desc" ? "asc" : "desc");
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
     } else {
       setSortKey(key);
       setSortDir("desc");
     }
   }
 
-  function SortableHead({ label, sortKeyVal, children }: { label: string; sortKeyVal: SortKey; children?: React.ReactNode }) {
+  function SortableHead({
+    label,
+    sortKeyVal,
+    children,
+  }: {
+    label: string;
+    sortKeyVal: SortKey;
+    children?: React.ReactNode;
+  }) {
     return (
       <TableHead
         className="cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap"
@@ -220,7 +195,6 @@ export default function Leaderboard() {
 
   return (
     <div className="container mx-auto px-4 py-6 sm:py-12">
-      {/* Page Header */}
       <div className="mb-6 sm:mb-10 animate-fade-in-up stagger-1">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Classement Global</h1>
         <p className="mt-3 text-muted-foreground max-w-2xl">
@@ -228,29 +202,28 @@ export default function Leaderboard() {
         </p>
       </div>
 
-      {/* Sélecteur de méthode de classement */}
-      <div className="mb-6 animate-fade-in-up stagger-2">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <span className="text-sm font-medium text-muted-foreground shrink-0">Méthode de classement :</span>
-          <div className="flex bg-muted rounded-lg p-1 gap-1">
-            {(Object.keys(methodInfo) as RankingMethod[]).map((key) => (
-              <button
-                key={key}
-                onClick={() => { setMethod(key); setSortKey("score"); setSortDir("desc"); }}
-                className={`px-3 py-1.5 rounded-md text-sm transition-all ${
-                  method === key
-                    ? "bg-background shadow-sm font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {methodInfo[key].label}
-              </button>
-            ))}
+      {/* Explication du TrustScore */}
+      <div className="mb-6 animate-fade-in-up stagger-2 rounded-xl border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 mt-0.5">
+            <Sparkles className="w-5 h-5 text-primary" />
           </div>
-        </div>
-        <div className="flex items-start gap-2 mt-2.5 text-xs text-muted-foreground">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <p>{methodInfo[method].description}</p>
+          <div className="space-y-2 flex-1 min-w-0">
+            <h2 className="text-sm font-semibold">STMG TrustScore</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Score unique inspiré de Trustpilot. Combine{" "}
+              <strong className="text-foreground">la décroissance temporelle</strong> (votes
+              récents privilégiés, demi-vie d'un an), un{" "}
+              <strong className="text-foreground">lissage bayésien</strong> avec un prior neutre
+              à 50%, et la{" "}
+              <strong className="text-foreground">borne inférieure Wilson à 95%</strong> pour
+              pénaliser fortement les petits échantillons. Un site a besoin d'au moins 5 votes
+              effectifs pour être classé.
+            </p>
+            <div className="pt-1">
+              <TrustScoreInfoDialog />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -265,7 +238,7 @@ export default function Leaderboard() {
               <TableRow>
                 <TableHead className="w-14">#</TableHead>
                 <TableHead>Site</TableHead>
-                <SortableHead label={methodInfo[method].scoreLabel} sortKeyVal="score" />
+                <SortableHead label="TrustScore" sortKeyVal="trust_score" />
                 <SortableHead label="Upvotes" sortKeyVal="upvotes">
                   <ThumbsUp className="w-3 h-3 text-green-500" />
                 </SortableHead>
@@ -276,7 +249,7 @@ export default function Leaderboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sorted.map((site, index) => {
+              {ranked.map((site, index) => {
                 const rank = index + 1;
                 const rankClass = rank === 1 ? "rank-gold" : rank === 2 ? "rank-silver" : rank === 3 ? "rank-bronze" : "";
                 return (
@@ -297,17 +270,7 @@ export default function Leaderboard() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {method === "raw" ? (
-                        <span className={`font-bold text-lg ${Number(site.score) > 0 ? "text-green-500" : Number(site.score) < 0 ? "text-red-500" : "text-muted-foreground"}`}>
-                          {Number(site.score) > 0 ? "+" : ""}{Number(site.score)}
-                        </span>
-                      ) : (
-                        <span className={`font-bold text-lg ${
-                          getMethodScore(site) >= 0.6 ? "text-green-500" : getMethodScore(site) < 0.4 ? "text-red-500" : "text-muted-foreground"
-                        }`}>
-                          {(getMethodScore(site) * 100).toFixed(1)}%
-                        </span>
-                      )}
+                      <ScoreDisplay site={site} />
                     </TableCell>
                     <TableCell>
                       <span className="text-green-500 font-medium">{Number(site.upvotes)}</span>
@@ -321,6 +284,58 @@ export default function Leaderboard() {
                   </TableRow>
                 );
               })}
+              {newcomers.length > 0 && (
+                <>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6} className="py-3">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                        <Info className="w-3.5 h-3.5" />
+                        <span>Pas encore assez de votes pour être classés</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {newcomers.map((site) => {
+                    const total = Number(site.upvotes) + Number(site.downvotes);
+                    return (
+                    <TableRow key={site.id} className="opacity-60 grayscale">
+                      <TableCell>
+                        <RankBadge rank={0} dimmed />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <SiteLogo site={site} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium">{site.name}</span>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-medium">
+                                Nouveau
+                              </Badge>
+                            </div>
+                            <a href={site.url} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-primary transition-colors">{site.url}</a>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {total > 0 ? (
+                          <ScoreDisplay site={site} />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-green-500 font-medium">{Number(site.upvotes)}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-red-500 font-medium">{Number(site.downvotes)}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-muted-foreground">{total}</span>
+                      </TableCell>
+                    </TableRow>
+                    );
+                  })}
+                </>
+              )}
             </TableBody>
           </Table>
         </div>

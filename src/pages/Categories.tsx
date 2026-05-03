@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,8 +10,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Ban, MousePointerClick, Link as LinkIcon, Library, MonitorPlay, Loader2, Crown, Medal, Award, Star, Search, ArrowUpDown, Info } from "lucide-react";
+import { ScoreTooltip } from "@/components/ScoreTooltip";
+import {
+  Ban,
+  MousePointerClick,
+  Link as LinkIcon,
+  Library,
+  MonitorPlay,
+  Loader2,
+  Crown,
+  Medal,
+  Award,
+  Star,
+  Search,
+  ArrowUpDown,
+  Info,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { TrustScoreInfoDialog } from "@/components/TrustScoreInfoDialog";
 
 interface CategoryEntry {
   id: number;
@@ -20,79 +39,14 @@ interface CategoryEntry {
   logo_path: string;
   avg_score: number;
   vote_count: number;
+  weighted_count: number;
+  trust_score: number;
+  has_enough_votes: boolean;
+  distribution: { 1: number; 2: number; 3: number; 4: number; 5: number };
 }
 
 interface CategoryData {
   [category: string]: CategoryEntry[];
-}
-
-type RankingMethod = "raw" | "bayesian" | "weighted" | "wilson";
-
-const BAYESIAN_M = 10;
-const BAYESIAN_C = 2.0;
-const WEIGHTED_M = 10;
-const WEIGHTED_C = 3.0;
-
-const methodInfo: Record<RankingMethod, { label: string; description: string }> = {
-  raw: {
-    label: "Score brut",
-    description: "Moyenne simple des notes. Peut être trompeuse avec peu de votes.",
-  },
-  bayesian: {
-    label: "Bayésien",
-    description: "Lissage pondéré avec a priori pessimiste à 2.0/5 (poids de 10 votes). Sans données, un site démarre à 2.0 et converge vers sa vraie moyenne à mesure que les votes s'accumulent.",
-  },
-  weighted: {
-    label: "Pondérée",
-    description: "Moyenne pondérée (formule IMDb) avec a priori neutre à 3.0/5. Combine la note réelle du site et un score de référence, pondérés par le nombre de votes. Sans données, un site démarre à 3.0.",
-  },
-  wilson: {
-    label: "Wilson",
-    description: "Borne inférieure de confiance à 95%. Estimation pessimiste réaliste — pénalise fortement les petits échantillons.",
-  },
-};
-
-function computeCategoryBayesian(entries: CategoryEntry[]): Map<number, number> {
-  const scores = new Map<number, number>();
-  for (const entry of entries) {
-    const v = Number(entry.vote_count);
-    const R = Number(entry.avg_score);
-    const WR = (v * R + BAYESIAN_M * BAYESIAN_C) / (v + BAYESIAN_M);
-    scores.set(entry.id, WR);
-  }
-  return scores;
-}
-
-function computeCategoryWeighted(entries: CategoryEntry[]): Map<number, number> {
-  const scores = new Map<number, number>();
-  for (const entry of entries) {
-    const v = Number(entry.vote_count);
-    const R = Number(entry.avg_score);
-    const WR = (v * R + WEIGHTED_M * WEIGHTED_C) / (v + WEIGHTED_M);
-    scores.set(entry.id, WR);
-  }
-  return scores;
-}
-
-function computeCategoryWilson(entries: CategoryEntry[]): Map<number, number> {
-  const z = 1.96;
-  const scores = new Map<number, number>();
-
-  for (const entry of entries) {
-    const n = Number(entry.vote_count);
-    if (n === 0) {
-      scores.set(entry.id, 0);
-      continue;
-    }
-    // Normaliser la note 1-5 vers 0-1
-    const p = (Number(entry.avg_score) - 1) / 4;
-    const lower =
-      (p + (z * z) / (2 * n) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n)) /
-      (1 + (z * z) / n);
-    // Reconvertir 0-1 vers 1-5
-    scores.set(entry.id, Math.max(1, lower * 4 + 1));
-  }
-  return scores;
 }
 
 const categories = [
@@ -122,7 +76,10 @@ function SiteLogo({ site }: { site: { name: string; logo_path: string } }) {
   );
 }
 
-function RankBadge({ rank }: { rank: number }) {
+function RankBadge({ rank, dimmed }: { rank: number; dimmed?: boolean }) {
+  if (dimmed) {
+    return <span className="text-muted-foreground/50 font-medium w-8 text-center block">—</span>;
+  }
   if (rank === 1) {
     return (
       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500/10">
@@ -147,24 +104,114 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="text-muted-foreground font-medium w-8 text-center block">{rank}</span>;
 }
 
-function StarDisplay({ score }: { score: number }) {
-  const rounded = Math.round(score * 10) / 10;
+function DistributionBar({
+  stars,
+  count,
+  max,
+  index,
+}: {
+  stars: number;
+  count: number;
+  max: number;
+  index: number;
+}) {
+  const pct = max > 0 ? (count / max) * 100 : 0;
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-0.5">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Star
-            key={i}
-            className={`w-4 h-4 ${
-              i <= Math.round(score)
-                ? "fill-yellow-500 text-yellow-500"
-                : "text-muted-foreground/30"
-            }`}
-          />
-        ))}
+    <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center gap-1 w-9 shrink-0">
+        <span className="font-medium tabular-nums w-3 text-center inline-block">
+          {stars}
+        </span>
+        <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 shrink-0" />
       </div>
-      <span className="text-sm font-medium">{rounded.toFixed(1)}</span>
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-[100px]">
+        <div
+          className="h-full bg-yellow-500 rounded-full animate-histogram-bar"
+          style={{ width: `${pct}%`, animationDelay: `${index * 60}ms` }}
+        />
+      </div>
+      <span className="w-8 text-right tabular-nums text-muted-foreground shrink-0">
+        {count}
+      </span>
     </div>
+  );
+}
+
+function StarDisplay({
+  score,
+  avg,
+  voteCount,
+  distribution,
+  categoryLabel,
+  CategoryIcon,
+}: {
+  score: number;
+  avg: number;
+  voteCount: number;
+  distribution?: CategoryEntry["distribution"];
+  categoryLabel: string;
+  CategoryIcon: LucideIcon;
+}) {
+  const rounded = Math.round(score * 10) / 10;
+  const dist = distribution ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const max = Math.max(dist[1], dist[2], dist[3], dist[4], dist[5], 1);
+  return (
+    <ScoreTooltip
+      contentClassName="w-64 px-3 py-2"
+      content={
+        <div className="text-xs space-y-2.5">
+          <div className="flex items-center gap-1.5 pb-2 border-b -mx-3 px-3">
+            <CategoryIcon className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="font-semibold uppercase tracking-wide text-[11px]">
+              {categoryLabel}
+            </span>
+          </div>
+          <div className="space-y-1">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">TrustScore</span>
+              <span className="font-semibold">{rounded.toFixed(2)} / 5</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Moyenne brute</span>
+              <span className="font-semibold">{avg.toFixed(2)} / 5</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Votes</span>
+              <span className="font-semibold">{voteCount}</span>
+            </div>
+          </div>
+          {voteCount > 0 && (
+            <div className="space-y-1 pt-2 border-t">
+              <div className="text-muted-foreground mb-1.5 font-medium">
+                Distribution
+              </div>
+              <DistributionBar stars={5} count={dist[5]} max={max} index={0} />
+              <DistributionBar stars={4} count={dist[4]} max={max} index={1} />
+              <DistributionBar stars={3} count={dist[3]} max={max} index={2} />
+              <DistributionBar stars={2} count={dist[2]} max={max} index={3} />
+              <DistributionBar stars={1} count={dist[1]} max={max} index={4} />
+            </div>
+          )}
+        </div>
+      }
+    >
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-0.5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Star
+              key={i}
+              className={`w-4 h-4 ${
+                i <= Math.round(score)
+                  ? "fill-yellow-500 text-yellow-500"
+                  : "text-muted-foreground/30"
+              }`}
+            />
+          ))}
+        </div>
+        <span className="text-sm font-medium">{rounded.toFixed(1)}</span>
+        <Info className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+      </div>
+    </ScoreTooltip>
   );
 }
 
@@ -176,15 +223,14 @@ export default function Categories() {
     keywords: "streaming sans pub, streaming qualité HD, meilleur catalogue streaming, site streaming fiable, streaming sans publicité, comparatif qualité streaming, streaming liens fiables, site streaming facile",
   });
 
-  type CatSortKey = "avg_score" | "vote_count";
+  type CatSortKey = "trust_score" | "vote_count";
   type SortDir = "asc" | "desc";
 
   const [data, setData] = useState<CategoryData>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortKey, setSortKey] = useState<CatSortKey>("avg_score");
+  const [sortKey, setSortKey] = useState<CatSortKey>("trust_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [method, setMethod] = useState<RankingMethod>("wilson");
 
   function toggleSort(key: CatSortKey) {
     if (sortKey === key) {
@@ -202,41 +248,38 @@ export default function Categories() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Pré-calculer les scores Bayésien, Pondérée et Wilson par catégorie
-  const bayesianByCategory = useMemo(() => {
-    const result: Record<string, Map<number, number>> = {};
+  const sortedByCategory = useMemo(() => {
+    const result: Record<string, CategoryEntry[]> = {};
     for (const cat of categories) {
-      result[cat.key] = computeCategoryBayesian(data[cat.key] || []);
+      const entries = (data[cat.key] || [])
+        .filter((entry) =>
+          entry.name.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        .slice()
+        .sort((a, b) => {
+          // Sites peu votés toujours en bas, peu importe le tri
+          if (a.has_enough_votes !== b.has_enough_votes) {
+            return a.has_enough_votes ? -1 : 1;
+          }
+          let av: number, bv: number;
+          if (sortKey === "trust_score") {
+            av = Number(a.trust_score);
+            bv = Number(b.trust_score);
+          } else {
+            av = Number(a.vote_count);
+            bv = Number(b.vote_count);
+          }
+          const primary = sortDir === "desc" ? bv - av : av - bv;
+          if (primary !== 0) return primary;
+          return Number(b.vote_count) - Number(a.vote_count);
+        });
+      result[cat.key] = entries;
     }
     return result;
-  }, [data]);
-
-  const weightedByCategory = useMemo(() => {
-    const result: Record<string, Map<number, number>> = {};
-    for (const cat of categories) {
-      result[cat.key] = computeCategoryWeighted(data[cat.key] || []);
-    }
-    return result;
-  }, [data]);
-
-  const wilsonByCategory = useMemo(() => {
-    const result: Record<string, Map<number, number>> = {};
-    for (const cat of categories) {
-      result[cat.key] = computeCategoryWilson(data[cat.key] || []);
-    }
-    return result;
-  }, [data]);
-
-  const getScore = useCallback((catKey: string, entry: CategoryEntry): number => {
-    if (method === "bayesian") return bayesianByCategory[catKey]?.get(entry.id) ?? Number(entry.avg_score);
-    if (method === "weighted") return weightedByCategory[catKey]?.get(entry.id) ?? Number(entry.avg_score);
-    if (method === "wilson") return wilsonByCategory[catKey]?.get(entry.id) ?? 0;
-    return Number(entry.avg_score);
-  }, [method, bayesianByCategory, weightedByCategory, wilsonByCategory]);
+  }, [data, searchQuery, sortKey, sortDir]);
 
   return (
     <div className="container mx-auto px-4 py-6 sm:py-12">
-      {/* Page Header */}
       <div className="mb-6 sm:mb-10 animate-fade-in-up stagger-1">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Classement par Catégories</h1>
         <p className="mt-3 text-muted-foreground max-w-2xl">
@@ -244,29 +287,28 @@ export default function Categories() {
         </p>
       </div>
 
-      {/* Sélecteur de méthode de classement */}
-      <div className="mb-6 animate-fade-in-up stagger-2">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <span className="text-sm font-medium text-muted-foreground shrink-0">Méthode de classement :</span>
-          <div className="flex bg-muted rounded-lg p-1 gap-1">
-            {(Object.keys(methodInfo) as RankingMethod[]).map((key) => (
-              <button
-                key={key}
-                onClick={() => { setMethod(key); setSortKey("avg_score"); setSortDir("desc"); }}
-                className={`px-3 py-1.5 rounded-md text-sm transition-all ${
-                  method === key
-                    ? "bg-background shadow-sm font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {methodInfo[key].label}
-              </button>
-            ))}
+      {/* Explication du TrustScore */}
+      <div className="mb-6 animate-fade-in-up stagger-2 rounded-xl border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 mt-0.5">
+            <Sparkles className="w-5 h-5 text-primary" />
           </div>
-        </div>
-        <div className="flex items-start gap-2 mt-2.5 text-xs text-muted-foreground">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <p>{methodInfo[method].description}</p>
+          <div className="space-y-2 flex-1 min-w-0">
+            <h2 className="text-sm font-semibold">STMG TrustScore</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Score de confiance unique qui combine{" "}
+              <strong className="text-foreground">la moyenne pondérée par le temps</strong> (votes
+              récents privilégiés), un{" "}
+              <strong className="text-foreground">lissage bayésien</strong> avec un prior calculé
+              dynamiquement sur l'ensemble des sites, et une{" "}
+              <strong className="text-foreground">borne inférieure de confiance à 95%</strong>{" "}
+              avec une variance plancher pour pénaliser les petits échantillons. Un site a besoin
+              d'au moins 10 votes effectifs par catégorie pour être classé. Inspiré de Trustpilot.
+            </p>
+            <div className="pt-1">
+              <TrustScoreInfoDialog />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -287,7 +329,6 @@ export default function Categories() {
             </TabsList>
           </div>
 
-          {/* Barre de recherche */}
           <div className="mb-6">
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -301,24 +342,11 @@ export default function Categories() {
             </div>
           </div>
 
-          {categories.map(({ key, description }) => {
-            const entries = (data[key] || [])
-              .filter((entry) =>
-                entry.name.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-              .sort((a, b) => {
-                let av: number, bv: number;
-                if (sortKey === "avg_score") {
-                  av = getScore(key, a);
-                  bv = getScore(key, b);
-                } else {
-                  av = Number(a[sortKey]);
-                  bv = Number(b[sortKey]);
-                }
-                const primary = sortDir === "desc" ? bv - av : av - bv;
-                if (primary !== 0) return primary;
-                return Number(b.vote_count) - Number(a.vote_count);
-              });
+          {categories.map(({ key, label, icon: Icon, description }) => {
+            const entries = sortedByCategory[key] || [];
+            const rankedEntries = entries.filter((e) => e.has_enough_votes);
+            const newcomerEntries = entries.filter((e) => !e.has_enough_votes);
+
             return (
               <TabsContent key={key} value={key}>
                 <div className="mb-4">
@@ -332,11 +360,11 @@ export default function Categories() {
                         <TableHead>Site</TableHead>
                         <TableHead
                           className="cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap"
-                          onClick={() => toggleSort("avg_score")}
+                          onClick={() => toggleSort("trust_score")}
                         >
                           <div className="flex items-center gap-1">
-                            {method === "raw" ? "Score Moyen" : method === "bayesian" ? "Score Bayésien" : method === "weighted" ? "Moyenne pondérée" : "Score Wilson"}
-                            <ArrowUpDown className={`w-3 h-3 ${sortKey === "avg_score" ? "text-primary" : "text-muted-foreground/50"}`} />
+                            TrustScore
+                            <ArrowUpDown className={`w-3 h-3 ${sortKey === "trust_score" ? "text-primary" : "text-muted-foreground/50"}`} />
                           </div>
                         </TableHead>
                         <TableHead
@@ -358,35 +386,94 @@ export default function Categories() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        entries.map((entry, index) => {
-                          const rank = index + 1;
-                          const rankClass = rank === 1 ? "rank-gold" : rank === 2 ? "rank-silver" : rank === 3 ? "rank-bronze" : "";
-                          return (
-                            <TableRow
-                              key={entry.id}
-                              className={`animate-fade-in-up ${index < 5 ? `stagger-${index + 1}` : ""} ${rank <= 3 ? "bg-muted/30" : ""}`}
-                            >
-                              <TableCell>
-                                <RankBadge rank={rank} />
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-3">
-                                  <SiteLogo site={entry} />
-                                  <div className="min-w-0">
-                                    <span className={`font-semibold ${rankClass}`}>{entry.name}</span>
-                                    <a href={entry.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-muted-foreground hover:text-primary transition-colors">{entry.url}</a>
+                        <>
+                          {rankedEntries.map((entry, index) => {
+                            const rank = index + 1;
+                            const rankClass = rank === 1 ? "rank-gold" : rank === 2 ? "rank-silver" : rank === 3 ? "rank-bronze" : "";
+                            return (
+                              <TableRow
+                                key={entry.id}
+                                className={`animate-fade-in-up ${index < 5 ? `stagger-${index + 1}` : ""} ${rank <= 3 ? "bg-muted/30" : ""}`}
+                              >
+                                <TableCell>
+                                  <RankBadge rank={rank} />
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-3">
+                                    <SiteLogo site={entry} />
+                                    <div className="min-w-0">
+                                      <span className={`font-semibold ${rankClass}`}>{entry.name}</span>
+                                      <a href={entry.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-muted-foreground hover:text-primary transition-colors">{entry.url}</a>
+                                    </div>
                                   </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <StarDisplay score={getScore(key, entry)} />
-                              </TableCell>
-                              <TableCell>
-                                <span className="text-muted-foreground">{Number(entry.vote_count)}</span>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
+                                </TableCell>
+                                <TableCell>
+                                  <StarDisplay
+                                    score={Number(entry.trust_score)}
+                                    avg={Number(entry.avg_score)}
+                                    voteCount={Number(entry.vote_count)}
+                                    distribution={entry.distribution}
+                                    categoryLabel={label}
+                                    CategoryIcon={Icon}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-muted-foreground">{Number(entry.vote_count)}</span>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          {newcomerEntries.length > 0 && (
+                            <>
+                              <TableRow className="hover:bg-transparent">
+                                <TableCell colSpan={4} className="py-3">
+                                  <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                                    <Info className="w-3.5 h-3.5" />
+                                    <span>Pas encore assez de votes pour être classés</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                              {newcomerEntries.map((entry) => (
+                                <TableRow key={entry.id} className="opacity-60 grayscale">
+                                  <TableCell>
+                                    <RankBadge rank={0} dimmed />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-3">
+                                      <SiteLogo site={entry} />
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-medium">{entry.name}</span>
+                                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-medium">
+                                            Nouveau
+                                          </Badge>
+                                        </div>
+                                        <a href={entry.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-muted-foreground hover:text-primary transition-colors">{entry.url}</a>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {entry.vote_count > 0 ? (
+                                      <StarDisplay
+                                        score={Number(entry.trust_score)}
+                                        avg={Number(entry.avg_score)}
+                                        voteCount={Number(entry.vote_count)}
+                                        distribution={entry.distribution}
+                                        categoryLabel={label}
+                                        CategoryIcon={Icon}
+                                      />
+                                    ) : (
+                                      <span className="text-muted-foreground">—</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="text-muted-foreground">{Number(entry.vote_count)}</span>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </>
+                          )}
+                        </>
                       )}
                     </TableBody>
                   </Table>

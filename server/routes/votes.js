@@ -8,8 +8,7 @@ const VALID_CATEGORIES = ["pubs", "facilite", "liens", "catalogue", "qualite_vid
 // Cloudflare injecte CF-Connecting-IP avec la vraie IP cliente.
 // Sans ça, req.ip serait l'IP d'un nœud Cloudflare, faussant les déduplications.
 function getRealIp(req) {
-  const cf = (req.headers["cf-connecting-ip"] || "").trim();
-  return cf || (req.ip || req.socket?.remoteAddress || "").trim();
+  return req.clientIp || req.ip || req.socket?.remoteAddress || req.realIp || "";
 }
 
 const router = Router();

@@ -12,7 +12,7 @@ const MAX_ALLOWED_BOT_SCORE = 60;
 
 export async function verifyTurnstile(req, res) {
   const { token, fingerprint, botSignals } = req.body;
-  const ip = req.ip || req.socket?.remoteAddress || "";
+  const ip = req.clientIp || req.ip || req.socket?.remoteAddress || req.realIp || "";
 
   if (!fingerprint) {
     return res.status(400).json({ error: "Fingerprint requis" });

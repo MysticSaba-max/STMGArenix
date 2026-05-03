@@ -169,32 +169,6 @@ export function detectBot(req, res, next) {
   next();
 }
 
-// ─── Vérification du score bot envoyé par le client ─────────────────────────
-export function requireLowBotScore(req, res, next) {
-  const botScore = parseInt(req.headers["x-bot-score"] || "0", 10);
-  const ip = req.realIp || req.ip || req.socket?.remoteAddress || "";
-  const ipHash = hashIp(ip);
-
-  if (isNaN(botScore)) return next();
-
-  // Score >= 85 = probablement un bot (relevé depuis 80 pour absorber les légères variations)
-  if (botScore >= 85) {
-    logSuspicious(ipHash, `high_bot_score:${botScore}`);
-    maybeBlock(ipHash);
-    return res.status(403).json({
-      error: "Comportement automatisé détecté.",
-      code: "BOT_SCORE_HIGH",
-    });
-  }
-
-  // Score entre 40 et 79 = suspect, on log mais on laisse passer avec avertissement
-  if (botScore >= 40) {
-    logSuspicious(ipHash, `medium_bot_score:${botScore}`);
-  }
-
-  next();
-}
-
 // ─── Nettoyage périodique ────────────────────────────────────────────────────
 setInterval(() => {
   const cutoff = Date.now() - 60 * 60 * 1000;

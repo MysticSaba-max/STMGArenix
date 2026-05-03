@@ -50,7 +50,6 @@ interface LeaderboardEntry {
   upvotes: number;
   downvotes: number;
   score: number;
-  total_votes: number;
 }
 
 type SortOption = "votes" | "score" | "upvotes" | "alpha_asc" | "alpha_desc";
@@ -610,15 +609,17 @@ export default function VotePage() {
             site.name.toLowerCase().includes(searchQuery.toLowerCase())
           )
           .sort((a, b) => {
-            const lbA = leaderboardData[a.id] || { upvotes: 0, downvotes: 0, score: 0, total_votes: 0 };
-            const lbB = leaderboardData[b.id] || { upvotes: 0, downvotes: 0, score: 0, total_votes: 0 };
+            const lbA = leaderboardData[a.id] || { upvotes: 0, downvotes: 0, score: 0 };
+            const lbB = leaderboardData[b.id] || { upvotes: 0, downvotes: 0, score: 0 };
+            const totalA = lbA.upvotes + lbA.downvotes;
+            const totalB = lbB.upvotes + lbB.downvotes;
             switch (sortBy) {
               case "votes":
-                return lbB.total_votes - lbA.total_votes || lbB.score - lbA.score;
+                return totalB - totalA || lbB.score - lbA.score;
               case "score":
                 return lbB.score - lbA.score || lbB.upvotes - lbA.upvotes;
               case "upvotes":
-                return lbB.upvotes - lbA.upvotes || lbB.total_votes - lbA.total_votes;
+                return lbB.upvotes - lbA.upvotes || totalB - totalA;
               case "alpha_asc":
                 return a.name.localeCompare(b.name, "fr");
               case "alpha_desc":

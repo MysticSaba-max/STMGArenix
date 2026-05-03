@@ -184,6 +184,11 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes histogram-bar-grow {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
@@ -200,6 +205,11 @@
 
 .animate-fade-in-up {
   animation: fade-in-up 0.6s ease-out forwards;
+}
+
+.animate-histogram-bar {
+  animation: histogram-bar-grow 0.4s ease-out both;
+  transform-origin: left;
 }
 
 .animate-glow-pulse {
