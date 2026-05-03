@@ -26,9 +26,12 @@ interface CategoryData {
   [category: string]: CategoryEntry[];
 }
 
-type RankingMethod = "raw" | "bayesian" | "wilson";
+type RankingMethod = "raw" | "bayesian" | "weighted" | "wilson";
 
 const BAYESIAN_M = 10;
+const BAYESIAN_C = 2.0;
+const WEIGHTED_M = 10;
+const WEIGHTED_C = 3.0;
 
 const methodInfo: Record<RankingMethod, { label: string; description: string }> = {
   raw: {
@@ -37,7 +40,11 @@ const methodInfo: Record<RankingMethod, { label: string; description: string }> 
   },
   bayesian: {
     label: "Bayésien",
-    description: "Moyenne pondérée (formule IMDb). Les sites avec peu de votes sont tirés vers la moyenne globale de la catégorie.",
+    description: "Lissage pondéré avec a priori pessimiste à 2.0/5 (poids de 10 votes). Sans données, un site démarre à 2.0 et converge vers sa vraie moyenne à mesure que les votes s'accumulent.",
+  },
+  weighted: {
+    label: "Pondérée",
+    description: "Moyenne pondérée (formule IMDb) avec a priori neutre à 3.0/5. Combine la note réelle du site et un score de référence, pondérés par le nombre de votes. Sans données, un site démarre à 3.0.",
   },
   wilson: {
     label: "Wilson",
@@ -46,19 +53,22 @@ const methodInfo: Record<RankingMethod, { label: string; description: string }> 
 };
 
 function computeCategoryBayesian(entries: CategoryEntry[]): Map<number, number> {
-  const totalWeighted = entries.reduce((sum, e) => sum + Number(e.avg_score) * Number(e.vote_count), 0);
-  const totalVotes = entries.reduce((sum, e) => sum + Number(e.vote_count), 0);
-  const C = totalVotes > 0 ? totalWeighted / totalVotes : 3;
-
   const scores = new Map<number, number>();
   for (const entry of entries) {
     const v = Number(entry.vote_count);
     const R = Number(entry.avg_score);
-    if (v === 0) {
-      scores.set(entry.id, C);
-      continue;
-    }
-    const WR = (v / (v + BAYESIAN_M)) * R + (BAYESIAN_M / (v + BAYESIAN_M)) * C;
+    const WR = (v * R + BAYESIAN_M * BAYESIAN_C) / (v + BAYESIAN_M);
+    scores.set(entry.id, WR);
+  }
+  return scores;
+}
+
+function computeCategoryWeighted(entries: CategoryEntry[]): Map<number, number> {
+  const scores = new Map<number, number>();
+  for (const entry of entries) {
+    const v = Number(entry.vote_count);
+    const R = Number(entry.avg_score);
+    const WR = (v * R + WEIGHTED_M * WEIGHTED_C) / (v + WEIGHTED_M);
     scores.set(entry.id, WR);
   }
   return scores;
@@ -192,11 +202,19 @@ export default function Categories() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Pré-calculer les scores Bayésien et Wilson par catégorie
+  // Pré-calculer les scores Bayésien, Pondérée et Wilson par catégorie
   const bayesianByCategory = useMemo(() => {
     const result: Record<string, Map<number, number>> = {};
     for (const cat of categories) {
       result[cat.key] = computeCategoryBayesian(data[cat.key] || []);
+    }
+    return result;
+  }, [data]);
+
+  const weightedByCategory = useMemo(() => {
+    const result: Record<string, Map<number, number>> = {};
+    for (const cat of categories) {
+      result[cat.key] = computeCategoryWeighted(data[cat.key] || []);
     }
     return result;
   }, [data]);
@@ -211,9 +229,10 @@ export default function Categories() {
 
   const getScore = useCallback((catKey: string, entry: CategoryEntry): number => {
     if (method === "bayesian") return bayesianByCategory[catKey]?.get(entry.id) ?? Number(entry.avg_score);
+    if (method === "weighted") return weightedByCategory[catKey]?.get(entry.id) ?? Number(entry.avg_score);
     if (method === "wilson") return wilsonByCategory[catKey]?.get(entry.id) ?? 0;
     return Number(entry.avg_score);
-  }, [method, bayesianByCategory, wilsonByCategory]);
+  }, [method, bayesianByCategory, weightedByCategory, wilsonByCategory]);
 
   return (
     <div className="container mx-auto px-4 py-6 sm:py-12">
@@ -296,7 +315,9 @@ export default function Categories() {
                   av = Number(a[sortKey]);
                   bv = Number(b[sortKey]);
                 }
-                return sortDir === "desc" ? bv - av : av - bv;
+                const primary = sortDir === "desc" ? bv - av : av - bv;
+                if (primary !== 0) return primary;
+                return Number(b.vote_count) - Number(a.vote_count);
               });
             return (
               <TabsContent key={key} value={key}>
@@ -314,7 +335,7 @@ export default function Categories() {
                           onClick={() => toggleSort("avg_score")}
                         >
                           <div className="flex items-center gap-1">
-                            {method === "raw" ? "Score Moyen" : method === "bayesian" ? "Score Bayésien" : "Score Wilson"}
+                            {method === "raw" ? "Score Moyen" : method === "bayesian" ? "Score Bayésien" : method === "weighted" ? "Moyenne pondérée" : "Score Wilson"}
                             <ArrowUpDown className={`w-3 h-3 ${sortKey === "avg_score" ? "text-primary" : "text-muted-foreground/50"}`} />
                           </div>
                         </TableHead>

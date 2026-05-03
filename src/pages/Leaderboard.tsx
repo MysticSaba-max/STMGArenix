@@ -23,9 +23,12 @@ interface LeaderboardEntry {
 
 type SortKey = "score" | "upvotes" | "downvotes" | "total";
 type SortDir = "asc" | "desc";
-type RankingMethod = "raw" | "bayesian" | "wilson";
+type RankingMethod = "raw" | "bayesian" | "weighted" | "wilson";
 
-const BAYESIAN_M = 15;
+const BAYESIAN_PRIOR_ALPHA = 2;
+const BAYESIAN_PRIOR_BETA = 8;
+const WEIGHTED_M = 10;
+const WEIGHTED_C = 0.5;
 
 const methodInfo: Record<RankingMethod, { label: string; description: string; scoreLabel: string }> = {
   raw: {
@@ -35,8 +38,13 @@ const methodInfo: Record<RankingMethod, { label: string; description: string; sc
   },
   bayesian: {
     label: "Bayésien",
-    description: "Moyenne pondérée (formule IMDb). Les sites avec peu de votes sont tirés vers la moyenne globale, garantissant un classement plus fiable.",
+    description: "Lissage Beta-Binomial avec a priori pessimiste (2 pseudo-upvotes, 8 pseudo-downvotes). Sans données, un site démarre à 20% et converge progressivement vers son vrai ratio à mesure que les votes s'accumulent.",
     scoreLabel: "Score Bayésien",
+  },
+  weighted: {
+    label: "Pondérée",
+    description: "Moyenne pondérée (formule IMDb) avec a priori neutre à 50%. Combine le ratio réel du site et un score de référence, pondérés par le nombre de votes : plus un site a de votes, plus son ratio compte. Sans données, un site démarre à 50%.",
+    scoreLabel: "Moyenne pondérée",
   },
   wilson: {
     label: "Wilson",
@@ -46,16 +54,23 @@ const methodInfo: Record<RankingMethod, { label: string; description: string; sc
 };
 
 function computeBayesianScores(data: LeaderboardEntry[]): Map<number, number> {
-  const totalUp = data.reduce((sum, s) => sum + Number(s.upvotes), 0);
-  const totalAll = data.reduce((sum, s) => sum + Number(s.upvotes) + Number(s.downvotes), 0);
-  const C = totalAll > 0 ? totalUp / totalAll : 0.5;
-
   const scores = new Map<number, number>();
   for (const site of data) {
-    const v = Number(site.upvotes) + Number(site.downvotes);
-    const R = v > 0 ? Number(site.upvotes) / v : 0.5;
-    const WR = (v / (v + BAYESIAN_M)) * R + (BAYESIAN_M / (v + BAYESIAN_M)) * C;
-    scores.set(site.id, WR);
+    const up = Number(site.upvotes);
+    const down = Number(site.downvotes);
+    const score = (up + BAYESIAN_PRIOR_ALPHA) / (up + down + BAYESIAN_PRIOR_ALPHA + BAYESIAN_PRIOR_BETA);
+    scores.set(site.id, score);
+  }
+  return scores;
+}
+
+function computeWeightedScores(data: LeaderboardEntry[]): Map<number, number> {
+  const scores = new Map<number, number>();
+  for (const site of data) {
+    const up = Number(site.upvotes);
+    const down = Number(site.downvotes);
+    const score = (up + WEIGHTED_M * WEIGHTED_C) / (up + down + WEIGHTED_M);
+    scores.set(site.id, score);
   }
   return scores;
 }
@@ -145,10 +160,12 @@ export default function Leaderboard() {
   }, []);
 
   const bayesianScores = useMemo(() => computeBayesianScores(data), [data]);
+  const weightedScores = useMemo(() => computeWeightedScores(data), [data]);
   const wilsonScores = useMemo(() => computeWilsonScores(data), [data]);
 
   function getMethodScore(site: LeaderboardEntry): number {
     if (method === "bayesian") return bayesianScores.get(site.id) ?? 0;
+    if (method === "weighted") return weightedScores.get(site.id) ?? 0;
     if (method === "wilson") return wilsonScores.get(site.id) ?? 0;
     return Number(site.score);
   }
@@ -167,10 +184,15 @@ export default function Leaderboard() {
         av = Number(a[sortKey]);
         bv = Number(b[sortKey]);
       }
-      return sortDir === "desc" ? bv - av : av - bv;
+      const primary = sortDir === "desc" ? bv - av : av - bv;
+      if (primary !== 0) return primary;
+      const totalA = Number(a.upvotes) + Number(a.downvotes);
+      const totalB = Number(b.upvotes) + Number(b.downvotes);
+      if (totalA !== totalB) return totalB - totalA;
+      return Number(b.upvotes) - Number(a.upvotes);
     });
     return arr;
-  }, [data, sortKey, sortDir, method, bayesianScores, wilsonScores]);
+  }, [data, sortKey, sortDir, method, bayesianScores, weightedScores, wilsonScores]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
