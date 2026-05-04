@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import { logBotAttempt } from "../services/botActivity.service.js";
 
 dotenv.config();
 
@@ -26,6 +27,13 @@ export async function verifyTurnstile(req, res) {
 
   // Refus immédiat si score bot trop élevé (même sans Turnstile)
   if (botScore >= MAX_ALLOWED_BOT_SCORE) {
+    const ipHash = crypto.createHash("sha256").update(ip).digest("hex");
+    logBotAttempt({
+      ipHash,
+      reason: "bot_score_high",
+      botScore,
+      userAgent: req.headers["user-agent"] || null,
+    }).catch(() => {});
     console.warn(`Bot détecté (score: ${botScore}) depuis IP: ${ip}`);
     return res.status(403).json({
       error: "Comportement automatisé détecté. Vérification échouée.",

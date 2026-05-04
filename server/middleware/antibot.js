@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { logBotAttempt } from "../services/botActivity.service.js";
 
 // ─── Patterns d'User-Agent de bots connus ───────────────────────────────────
 const BOT_UA_PATTERNS = [
@@ -78,11 +79,12 @@ function hashIp(ip) {
   return createHash("sha256").update(ip + (process.env.JWT_SECRET || "salt")).digest("hex");
 }
 
-function logSuspicious(ipHash, reason) {
+function logSuspicious(ipHash, reason, userAgent = null) {
   if (!suspiciousLog.has(ipHash)) suspiciousLog.set(ipHash, []);
   const log = suspiciousLog.get(ipHash);
   log.push({ timestamp: Date.now(), reason });
   if (log.length > 200) log.shift();
+  logBotAttempt({ ipHash, reason, userAgent }).catch(() => {});
 }
 
 function isBlocked(ipHash) {
@@ -122,7 +124,7 @@ export function detectBot(req, res, next) {
 
   // 2. User-Agent vide ou trop court
   if (!ua || ua.length < 15) {
-    logSuspicious(ipHash, "empty_ua");
+    logSuspicious(ipHash, "empty_ua", ua);
     maybeBlock(ipHash);
     return res.status(403).json({ error: "Accès refusé", code: "BOT_DETECTED" });
   }
@@ -130,7 +132,7 @@ export function detectBot(req, res, next) {
   // 3. User-Agent de bot connu
   for (const pattern of BOT_UA_PATTERNS) {
     if (pattern.test(ua)) {
-      logSuspicious(ipHash, `bot_ua:${pattern.source.slice(0, 20)}`);
+      logSuspicious(ipHash, `bot_ua:${pattern.source.slice(0, 20)}`, ua);
       maybeBlock(ipHash);
       return res.status(403).json({ error: "Accès refusé", code: "BOT_DETECTED" });
     }
@@ -140,7 +142,7 @@ export function detectBot(req, res, next) {
   if (req.path !== "/health") {
     for (const header of REQUIRED_BROWSER_HEADERS) {
       if (!req.headers[header]) {
-        logSuspicious(ipHash, `missing_header:${header}`);
+        logSuspicious(ipHash, `missing_header:${header}`, ua);
         maybeBlock(ipHash);
         return res.status(403).json({ error: "Accès refusé", code: "INVALID_REQUEST" });
       }
@@ -151,7 +153,7 @@ export function detectBot(req, res, next) {
   if (req.method === "POST") {
     const ct = req.headers["content-type"] || "";
     if (!ct.includes("application/json") && !ct.includes("multipart/form-data")) {
-      logSuspicious(ipHash, "invalid_content_type");
+      logSuspicious(ipHash, "invalid_content_type", ua);
       return res.status(400).json({ error: "Content-Type invalide" });
     }
   }
@@ -160,7 +162,7 @@ export function detectBot(req, res, next) {
   if (process.env.ALLOWED_ORIGIN && req.path.includes("/votes")) {
     const referer = req.headers["referer"] || req.headers["origin"] || "";
     if (referer && !referer.startsWith(process.env.ALLOWED_ORIGIN)) {
-      logSuspicious(ipHash, "invalid_referer");
+      logSuspicious(ipHash, "invalid_referer", ua);
       maybeBlock(ipHash);
       return res.status(403).json({ error: "Accès refusé", code: "INVALID_ORIGIN" });
     }
