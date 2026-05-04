@@ -30,7 +30,12 @@ export async function getGlobalLeaderboard() {
              ELSE 0 END
       ), 0) AS weighted_down
     FROM sites s
-    LEFT JOIN votes v ON s.id = v.site_id
+    LEFT JOIN votes v
+      ON s.id = v.site_id
+      AND NOT EXISTS (
+        SELECT 1 FROM vote_flags f
+        WHERE f.vote_id = v.id AND f.table_name = 'votes'
+      )
     GROUP BY s.id
     `,
     [LN2, HALF_LIFE_DAYS, LN2, HALF_LIFE_DAYS]
@@ -62,7 +67,13 @@ export async function getCategoryLeaderboard(category) {
       COALESCE(SUM(CASE WHEN cv.score = 4 THEN 1 ELSE 0 END), 0) AS count_4,
       COALESCE(SUM(CASE WHEN cv.score = 5 THEN 1 ELSE 0 END), 0) AS count_5
     FROM sites s
-    LEFT JOIN category_votes cv ON s.id = cv.site_id AND cv.category = ?
+    LEFT JOIN category_votes cv
+      ON s.id = cv.site_id
+      AND cv.category = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM vote_flags f
+        WHERE f.vote_id = cv.id AND f.table_name = 'category_votes'
+      )
     GROUP BY s.id
     `,
     [LN2, HALF_LIFE_DAYS, LN2, HALF_LIFE_DAYS, category]
