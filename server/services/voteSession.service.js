@@ -28,9 +28,13 @@ export async function consumeVoteSession({ jti, fpHash, ipSubnet }) {
       [jti]
     );
     const sess = rows[0];
-    if (!sess || sess.revoked) {
+    if (!sess) {
       await conn.rollback();
       return { ok: false, code: "SESSION_EXPIRED" };
+    }
+    if (sess.revoked) {
+      await conn.rollback();
+      return { ok: false, code: "SESSION_REVOKED" };
     }
     if (sess.vote_count >= sess.max_votes) {
       await conn.rollback();
@@ -51,7 +55,7 @@ export async function consumeVoteSession({ jti, fpHash, ipSubnet }) {
     await conn.commit();
     return { ok: true, signingKey: sess.signing_key, botScore: sess.bot_score };
   } catch (err) {
-    await conn.rollback();
+    try { await conn.rollback(); } catch { /* preserve original error */ }
     throw err;
   } finally {
     conn.release();

@@ -64,12 +64,18 @@ test("consumeVoteSession refuses on IP subnet mismatch", async () => {
   await cleanup();
 });
 
-test("revokeVoteSession marks revoked=1 and consume fails", async () => {
+test("revokeVoteSession marks revoked=1 and consume fails with SESSION_REVOKED", async () => {
   await cleanup();
   const { jti } = await createVoteSession({ fpHash: fakeFp, ipSubnet: fakeIp, botScore: 0 });
   await revokeVoteSession(jti);
   const r = await consumeVoteSession({ jti, fpHash: fakeFp, ipSubnet: fakeIp });
   assert.equal(r.ok, false);
-  assert.equal(r.code, "SESSION_EXPIRED");
+  assert.equal(r.code, "SESSION_REVOKED");
   await cleanup();
+});
+
+test("consumeVoteSession on missing jti returns SESSION_EXPIRED", async () => {
+  const r = await consumeVoteSession({ jti: "0".repeat(32), fpHash: fakeFp, ipSubnet: fakeIp });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, "SESSION_EXPIRED");
 });
