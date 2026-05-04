@@ -27,6 +27,8 @@ const app = express();
 app.disable("x-powered-by"); // ne pas révéler la stack Express
 const PORT = process.env.PORT || 3001;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || null;
+const ENABLE_HARDENING = process.env.ENABLE_HARDENING !== "false";
+console.log(`[security] hardening=${ENABLE_HARDENING ? "on" : "off"}`);
 
 // ─── Trust proxy (Cloudflare / nginx) ───────────────────────────────────────
 app.set("trust proxy", 1);

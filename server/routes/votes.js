@@ -10,6 +10,17 @@ import rateLimit from "express-rate-limit";
 
 const VALID_CATEGORIES = ["pubs", "facilite", "liens", "catalogue", "qualite_video"];
 
+// ─── Feature flag de hardening ────────────────────────────────────────────────
+// ENABLE_HARDENING = "false" désactive les middlewares ajoutés par cette phase
+// (honeypot, requireVerifiedSession nouveau format, voteSignature, voteRateLimit).
+// requireVerifiedSession reste appelé mais en mode dev (passthrough sans token).
+// Permet un rollback sans redéploiement de code en cas d'incident en prod.
+const HARDENING_ON = process.env.ENABLE_HARDENING !== "false";
+
+// noop middleware (utilisé quand HARDENING_ON est false)
+function noop(_req, _res, next) { next(); }
+function maybe(mw) { return HARDENING_ON ? mw : noop; }
+
 // Cloudflare injecte CF-Connecting-IP avec la vraie IP cliente.
 // Sans ça, req.ip serait l'IP d'un nœud Cloudflare, faussant les déduplications.
 function getRealIp(req) {
@@ -42,11 +53,11 @@ const router = Router();
 router.post("/verify", verifyTurnstile);
 
 router.post("/",
-  honeypotGuard,
+  maybe(honeypotGuard),
   requireVerifiedSession,
-  verifyVoteSignature,
+  maybe(verifyVoteSignature),
   requireFingerprint,
-  voteRateLimit,
+  maybe(voteRateLimit),
   async (req, res) => {
     const { vote_type, fingerprintHash } = req.body;
     const siteId = Number.parseInt(req.body.site_id, 10);
@@ -63,11 +74,11 @@ router.post("/",
 );
 
 router.post("/categories",
-  honeypotGuard,
+  maybe(honeypotGuard),
   requireVerifiedSession,
-  verifyVoteSignature,
+  maybe(verifyVoteSignature),
   requireFingerprint,
-  voteRateLimit,
+  maybe(voteRateLimit),
   async (req, res) => {
     const { ratings, fingerprintHash } = req.body;
     const siteId = Number.parseInt(req.body.site_id, 10);
