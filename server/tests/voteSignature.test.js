@@ -76,3 +76,25 @@ test("replay (same nonce) returns 403 REPLAY", () => {
   assert.equal(m2.getStatus(), 403);
   assert.equal(m2.getJson().code, "REPLAY");
 });
+
+test("non-hex sig returns 400 BAD_SIG_FORMAT", () => {
+  const ts = Date.now();
+  const nonce = "n-fmt";
+  const { req, res, getStatus, getJson } = mockReqRes({
+    site_id: 1, vote_type: "up", fingerprint: "fp", ts, nonce, sig: "not-hex-junk!!"
+  });
+  verifyVoteSignature(req, res, () => {});
+  assert.equal(getStatus(), 400);
+  assert.equal(getJson().code, "BAD_SIG_FORMAT");
+});
+
+test("nonce > 128 chars rejected with MISSING_SIG (DoS guard)", () => {
+  const ts = Date.now();
+  const nonce = "x".repeat(200);
+  const payload = { site_id: 1, vote_type: "up", fingerprint: "fp", ts, nonce };
+  const sig = makeSig(payload);
+  const { req, res, getStatus, getJson } = mockReqRes({ ...payload, sig });
+  verifyVoteSignature(req, res, () => {});
+  assert.equal(getStatus(), 400);
+  assert.equal(getJson().code, "MISSING_SIG");
+});
