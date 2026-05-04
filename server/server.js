@@ -16,12 +16,15 @@ import { blockVpnProxy } from "./middleware/vpn.js";
 import proposalsRoutes from "./routes/proposals.js";
 import { getClientIp, normalizeIpForSubnetLimits } from "./utils/ip.js";
 import { startAnomalyScanner } from "./jobs/anomalyScanner.js";
+import { logBotAttempt } from "./services/botActivity.service.js";
+import { hashIp } from "./utils/ipHash.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 dotenv.config();
 
 const app = express();
+app.disable("x-powered-by"); // ne pas révéler la stack Express
 const PORT = process.env.PORT || 3001;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || null;
 
@@ -62,6 +65,9 @@ app.use((_req, res, next) => {
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self';"
@@ -158,9 +164,25 @@ const uploadLimiter = rateLimit({
   message: { error: "Trop d'uploads, réessayez dans 1 minute." },
 });
 
+// ─── Origine stricte sur les routes de vote (uniquement quand ALLOWED_ORIGIN est défini) ──
+function requireOrigin(req, res, next) {
+  if (!ALLOWED_ORIGIN) return next();
+  const origin = req.headers.origin || req.headers.referer || "";
+  if (!origin.startsWith(ALLOWED_ORIGIN)) {
+    logBotAttempt({
+      ipHash: hashIp(req.realIp || ""),
+      reason: "bad_origin",
+      userAgent: req.headers["user-agent"] || null,
+    }).catch(() => {});
+    return res.status(403).json({ error: "Origine non autorisée", code: "BAD_ORIGIN" });
+  }
+  next();
+}
+
 // ─── Application des middlewares globaux ──────────────────────────────────────
 app.use("/api", globalLimiter);
 app.use("/api", detectBot);                // Détection bots UA/headers
+app.use("/api/votes", requireOrigin);
 app.use("/api/votes", voteLimiter);
 app.use("/api/votes/verify", verifyLimiter);
 app.use("/api/auth", authLimiter);
