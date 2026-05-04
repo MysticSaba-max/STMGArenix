@@ -5,6 +5,13 @@ import { hashIp } from "../utils/ipHash.js";
 const WINDOW_MS = 60 * 60 * 1000;
 const LIMITS = { votesByFp: 12, votesByIp: 60, fpsByIp: 8, ipsByFp: 3 };
 
+// Garde anti-DoS : un attaquant qui émet 1 vote par fingerprint depuis
+// un million de fp aléatoires accumulerait ~1M entrées avant le cleanup
+// (10 min). MAX_TRACKED_KEYS plafonne chaque map ; au-delà, on évince
+// la plus ancienne entrée (Map itère en ordre d'insertion donc keys().next()
+// rend la première insérée).
+const MAX_TRACKED_KEYS = 50_000;
+
 let votesByFp = new Map();
 let votesByIp = new Map();
 let fpsByIp = new Map();
@@ -15,6 +22,13 @@ export function _resetForTest() {
   votesByIp = new Map();
   fpsByIp = new Map();
   ipsByFp = new Map();
+}
+
+function evictIfFull(map) {
+  if (map.size >= MAX_TRACKED_KEYS) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) map.delete(firstKey);
+  }
 }
 
 function pruneArr(arr, cutoff) {
@@ -74,6 +88,14 @@ export function voteRateLimit(req, res, next) {
       code: "FP_TRAVELING",
     });
   }
+
+  // Éviction LRU-lite avant insertion : si on est à la borne et que la clé
+  // n'existe pas encore, on évince la plus ancienne pour éviter la croissance
+  // illimitée sous attaque distinct-key.
+  if (!votesByFp.has(fp)) evictIfFull(votesByFp);
+  if (!votesByIp.has(ip)) evictIfFull(votesByIp);
+  if (!fpsByIp.has(ip)) evictIfFull(fpsByIp);
+  if (!ipsByFp.has(fp)) evictIfFull(ipsByFp);
 
   arr.push(now); votesByFp.set(fp, arr);
   ipArr.push(now); votesByIp.set(ip, ipArr);
