@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { logBotAttempt } from "../services/botActivity.service.js";
 import { hashIp } from "../utils/ipHash.js";
+import { createVoteSession, consumeVoteSession } from "../services/voteSession.service.js";
+import { hashFingerprint } from "./fingerprint.js";
 
 dotenv.config();
 
@@ -16,7 +18,7 @@ export async function verifyTurnstile(req, res) {
   const { token, fingerprint, botSignals } = req.body;
   const ip = req.clientIp || req.ip || req.socket?.remoteAddress || req.realIp || "";
 
-  if (!fingerprint) {
+  if (!fingerprint || typeof fingerprint !== "string" || fingerprint.length < 32) {
     return res.status(400).json({ error: "Fingerprint requis" });
   }
 
@@ -41,14 +43,21 @@ export async function verifyTurnstile(req, res) {
     });
   }
 
+  const fpHash = hashFingerprint(fingerprint);
+
   // ─── Mode développement (pas de clé Turnstile) ───────────────────────────
   if (!SECRET_KEY) {
+    const session = await createVoteSession({
+      fpHash,
+      ipSubnet: req.realIp,
+      botScore,
+    });
     const sessionToken = jwt.sign(
-      { verified: true, fingerprint, ip, botScore },
+      { jti: session.jti, verified: true, fp: fpHash, ip: req.realIp, botScore },
       SESSION_SECRET,
       { expiresIn: "1h" }
     );
-    return res.json({ sessionToken });
+    return res.json({ sessionToken, signingKey: session.signingKey });
   }
 
   if (!token) {
@@ -58,8 +67,7 @@ export async function verifyTurnstile(req, res) {
   // ─── Vérification Turnstile ───────────────────────────────────────────────
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       {
@@ -69,20 +77,23 @@ export async function verifyTurnstile(req, res) {
         signal: controller.signal,
       }
     );
-    clearTimeout(timeout);
-
+    clearTimeout(timeoutId);
     const data = await response.json();
-
     if (!data.success) {
       return res.status(403).json({ error: "Vérification captcha échouée" });
     }
 
+    const session = await createVoteSession({
+      fpHash,
+      ipSubnet: req.realIp,
+      botScore,
+    });
     const sessionToken = jwt.sign(
-      { verified: true, fingerprint, ip, botScore },
+      { jti: session.jti, verified: true, fp: fpHash, ip: req.realIp, botScore },
       SESSION_SECRET,
       { expiresIn: "1h" }
     );
-    return res.json({ sessionToken });
+    return res.json({ sessionToken, signingKey: session.signingKey });
   } catch (err) {
     if (err.name === "AbortError") {
       return res.status(503).json({ error: "Timeout de vérification captcha" });
@@ -91,42 +102,57 @@ export async function verifyTurnstile(req, res) {
   }
 }
 
-export function requireVerifiedSession(req, res, next) {
-  if (!SECRET_KEY) return next();
+export async function requireVerifiedSession(req, res, next) {
+  // Dev mode (no Turnstile secret) — only enforce if a token is provided.
+  // This preserves the existing dev-mode behavior where unauthenticated requests pass through.
+  if (!SECRET_KEY) {
+    const token = req.headers["x-vote-session"];
+    if (!token) return next();
+  }
 
   const token = req.headers["x-vote-session"];
   if (!token) {
-    return res.status(403).json({ error: "Session non vérifiée, rechargez la page" });
+    return res.status(403).json({ error: "Session non vérifiée, rechargez la page", code: "NO_SESSION" });
   }
 
+  let payload;
   try {
-    const payload = jwt.verify(token, SESSION_SECRET);
-
-    if (!payload.verified) {
-      return res.status(403).json({ error: "Session invalide" });
-    }
-
-    // Vérifier que la session n'a pas un bot score trop élevé
-    if ((payload.botScore || 0) >= MAX_ALLOWED_BOT_SCORE) {
-      return res.status(403).json({
-        error: "Session refusée : comportement automatisé détecté.",
-        code: "BOT_SESSION",
-      });
-    }
-
-    // Vérifier que le fingerprint correspond
-    if (
-      payload.fingerprint &&
-      req.body.fingerprint &&
-      payload.fingerprint !== req.body.fingerprint
-    ) {
-      return res.status(403).json({ error: "Session invalide pour cet appareil" });
-    }
-
-    next();
+    payload = jwt.verify(token, SESSION_SECRET);
   } catch {
-    return res.status(403).json({ error: "Session expirée, rechargez la page" });
+    return res.status(403).json({ error: "Session expirée, rechargez la page", code: "BAD_SESSION" });
   }
+
+  const fpHash = hashFingerprint(req.body.fingerprint || "");
+  const result = await consumeVoteSession({
+    jti: payload.jti,
+    fpHash,
+    ipSubnet: req.realIp,
+  });
+
+  if (!result.ok) {
+    let userMessage;
+    switch (result.code) {
+      case "QUOTA_EXCEEDED":
+        userMessage = "Quota de votes atteint. Rechargez la page pour en obtenir une nouvelle session.";
+        break;
+      case "SESSION_EXPIRED":
+        userMessage = "Session expirée. Rechargez la page.";
+        break;
+      case "SESSION_REVOKED":
+        userMessage = "Session révoquée. Rechargez la page pour réessayer.";
+        break;
+      case "FP_MISMATCH":
+      case "IP_MISMATCH":
+        userMessage = "Session liée à un autre appareil ou réseau.";
+        break;
+      default:
+        userMessage = "Session invalide.";
+    }
+    return res.status(403).json({ error: userMessage, code: result.code });
+  }
+
+  req.voteSession = { jti: payload.jti, signingKey: result.signingKey, botScore: result.botScore };
+  next();
 }
 
 // ─── Calcul serveur du score bot (re-vérifie les signaux clients) ────────────
