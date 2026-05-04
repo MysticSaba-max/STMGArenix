@@ -47,24 +47,30 @@ export async function verifyTurnstile(req, res) {
 
   // ─── Mode développement (pas de clé Turnstile) ───────────────────────────
   if (!SECRET_KEY) {
-    const session = await createVoteSession({
-      fpHash,
-      ipSubnet: req.realIp,
-      botScore,
-    });
-    const sessionToken = jwt.sign(
-      { jti: session.jti, verified: true, fp: fpHash, ip: req.realIp, botScore },
-      SESSION_SECRET,
-      { expiresIn: "1h" }
-    );
-    return res.json({ sessionToken, signingKey: session.signingKey });
+    try {
+      const session = await createVoteSession({
+        fpHash,
+        ipSubnet: req.realIp,
+        botScore,
+      });
+      const sessionToken = jwt.sign(
+        { jti: session.jti, fp: fpHash, ip: req.realIp, botScore },
+        SESSION_SECRET,
+        { expiresIn: "1h" }
+      );
+      return res.json({ sessionToken, signingKey: session.signingKey });
+    } catch (err) {
+      console.error("[turnstile dev] createVoteSession failed:", err.message);
+      return res.status(503).json({ error: "Service de session indisponible." });
+    }
   }
 
   if (!token) {
     return res.status(403).json({ error: "Captcha manquant" });
   }
 
-  // ─── Vérification Turnstile ───────────────────────────────────────────────
+  // ─── Vérification Turnstile (réseau Cloudflare) ──────────────────────────
+  let turnstileOk = false;
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -82,35 +88,43 @@ export async function verifyTurnstile(req, res) {
     if (!data.success) {
       return res.status(403).json({ error: "Vérification captcha échouée" });
     }
-
-    const session = await createVoteSession({
-      fpHash,
-      ipSubnet: req.realIp,
-      botScore,
-    });
-    const sessionToken = jwt.sign(
-      { jti: session.jti, verified: true, fp: fpHash, ip: req.realIp, botScore },
-      SESSION_SECRET,
-      { expiresIn: "1h" }
-    );
-    return res.json({ sessionToken, signingKey: session.signingKey });
+    turnstileOk = true;
   } catch (err) {
     if (err.name === "AbortError") {
       return res.status(503).json({ error: "Timeout de vérification captcha" });
     }
     return res.status(500).json({ error: "Erreur de vérification captcha" });
   }
+
+  if (!turnstileOk) return; // unreachable, but explicit
+
+  // ─── Création de session (DB) — séparée du try/catch Turnstile pour distinguer
+  // un échec captcha d'un échec base de données dans les logs et les réponses.
+  try {
+    const session = await createVoteSession({
+      fpHash,
+      ipSubnet: req.realIp,
+      botScore,
+    });
+    const sessionToken = jwt.sign(
+      { jti: session.jti, fp: fpHash, ip: req.realIp, botScore },
+      SESSION_SECRET,
+      { expiresIn: "1h" }
+    );
+    return res.json({ sessionToken, signingKey: session.signingKey });
+  } catch (err) {
+    console.error("[turnstile] createVoteSession failed:", err.message);
+    return res.status(503).json({ error: "Service de session indisponible, réessayez." });
+  }
 }
 
 export async function requireVerifiedSession(req, res, next) {
-  // Dev mode (no Turnstile secret) — only enforce if a token is provided.
-  // This preserves the existing dev-mode behavior where unauthenticated requests pass through.
-  if (!SECRET_KEY) {
-    const token = req.headers["x-vote-session"];
-    if (!token) return next();
-  }
-
   const token = req.headers["x-vote-session"];
+
+  // Dev mode (no Turnstile secret) sans header → passthrough (compat existante).
+  // Si un header est fourni en dev, on l'enforce comme en prod.
+  if (!SECRET_KEY && !token) return next();
+
   if (!token) {
     return res.status(403).json({ error: "Session non vérifiée, rechargez la page", code: "NO_SESSION" });
   }
@@ -131,6 +145,7 @@ export async function requireVerifiedSession(req, res, next) {
 
   if (!result.ok) {
     let userMessage;
+    let publicCode = result.code;
     switch (result.code) {
       case "QUOTA_EXCEEDED":
         userMessage = "Quota de votes atteint. Rechargez la page pour en obtenir une nouvelle session.";
@@ -143,12 +158,16 @@ export async function requireVerifiedSession(req, res, next) {
         break;
       case "FP_MISMATCH":
       case "IP_MISMATCH":
+        // Ne PAS révéler au client lequel des deux a échoué : un attaquant
+        // qui voit "FP_MISMATCH" sait qu'il doit corriger son fingerprint
+        // (et inversement). On collapse vers un code générique côté réponse.
         userMessage = "Session liée à un autre appareil ou réseau.";
+        publicCode = "BINDING_MISMATCH";
         break;
       default:
         userMessage = "Session invalide.";
     }
-    return res.status(403).json({ error: userMessage, code: result.code });
+    return res.status(403).json({ error: userMessage, code: publicCode });
   }
 
   req.voteSession = { jti: payload.jti, signingKey: result.signingKey, botScore: result.botScore };
