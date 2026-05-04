@@ -20,7 +20,8 @@ export async function countRecentBotAttempts(ipHash, minutes = 60) {
       [ipHash, minutes]
     );
     return Number(rows[0].n) || 0;
-  } catch {
+  } catch (err) {
+    console.warn("[botActivity] count failed:", err.message);
     return 0;
   }
 }
