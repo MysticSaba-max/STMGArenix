@@ -15,6 +15,7 @@ import { detectBot } from "./middleware/antibot.js";
 import { blockVpnProxy } from "./middleware/vpn.js";
 import proposalsRoutes from "./routes/proposals.js";
 import { getClientIp, normalizeIpForSubnetLimits } from "./utils/ip.js";
+import { startAnomalyScanner } from "./jobs/anomalyScanner.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,6 +199,7 @@ async function start(retries = 10, delayMs = 3000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       await initDatabase();
+      startAnomalyScanner();
       app.listen(PORT, () => {
         console.log(`\n✅ Serveur démarré sur http://localhost:${PORT}`);
         console.log(`   Mode: ${process.env.TURNSTILE_SECRET_KEY ? "Production" : "Développement (Turnstile désactivé)"}`);
