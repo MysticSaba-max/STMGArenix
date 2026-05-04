@@ -86,6 +86,25 @@ export async function initDatabase() {
     )
   `);
 
+  // Table des sessions de vote sécurisées (JWT jti + signing key + quota counter + fp/IP binding)
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS vote_sessions (
+      jti           CHAR(32) PRIMARY KEY,
+      fp_hash       CHAR(64) NOT NULL,
+      ip_subnet     VARCHAR(64) NOT NULL,
+      signing_key   CHAR(64) NOT NULL,
+      bot_score     SMALLINT UNSIGNED NOT NULL,
+      vote_count    SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      max_votes     SMALLINT UNSIGNED NOT NULL DEFAULT 16,
+      created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at    DATETIME NOT NULL,
+      revoked       TINYINT(1) NOT NULL DEFAULT 0,
+      INDEX idx_fp_hash (fp_hash),
+      INDEX idx_ip_subnet (ip_subnet),
+      INDEX idx_expires_at (expires_at)
+    )
+  `);
+
   // Add ip_hash column if it doesn't exist (migration for existing tables)
   try {
     await pool.execute("ALTER TABLE votes ADD COLUMN ip_hash VARCHAR(255) DEFAULT NULL");
@@ -146,6 +165,13 @@ export async function initDatabase() {
   try {
     await pool.execute(
       "DELETE FROM ip_reputation_cache WHERE checked_at < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+    );
+  } catch { /* ignore */ }
+
+  // Nettoyage des sessions de vote expirées depuis > 24h
+  try {
+    await pool.execute(
+      "DELETE FROM vote_sessions WHERE expires_at < DATE_SUB(NOW(), INTERVAL 1 DAY)"
     );
   } catch { /* ignore */ }
 
