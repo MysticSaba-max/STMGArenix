@@ -9,6 +9,7 @@ import {
   deleteAdmin,
   changeAdminPassword,
 } from "../services/auth.service.js";
+import { revokeVoteSession } from "../services/voteSession.service.js";
 import rateLimit from "express-rate-limit";
 
 const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
@@ -256,6 +257,128 @@ router.put("/proposals/:id/reject", requireAdmin, async (req, res) => {
     }
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+// ─── Anomalies (votes flagués par le scanner) ────────────────────────────────
+
+router.get("/anomalies", requireAdmin, async (_req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT cluster_id, reason, COUNT(*) AS count,
+              MIN(flagged_at) AS first_seen, MAX(flagged_at) AS last_seen,
+              GROUP_CONCAT(DISTINCT table_name) AS tables
+       FROM vote_flags
+       WHERE flagged_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+       GROUP BY cluster_id, reason
+       ORDER BY last_seen DESC
+       LIMIT 200`
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+router.get("/anomalies/:cluster_id", requireAdmin, async (req, res) => {
+  try {
+    const cid = req.params.cluster_id;
+    const [rows] = await pool.execute(
+      `SELECT f.vote_id, f.table_name, f.reason, f.flagged_at,
+              CASE WHEN f.table_name='votes' THEN v.fingerprint ELSE cv.fingerprint END AS fingerprint,
+              CASE WHEN f.table_name='votes' THEN v.ip_hash ELSE cv.ip_hash END AS ip_hash,
+              CASE WHEN f.table_name='votes' THEN v.site_id ELSE cv.site_id END AS site_id
+       FROM vote_flags f
+       LEFT JOIN votes v ON f.table_name='votes' AND v.id = f.vote_id
+       LEFT JOIN category_votes cv ON f.table_name='category_votes' AND cv.id = f.vote_id
+       WHERE f.cluster_id = ?
+       LIMIT 500`,
+      [cid]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+// Lever les flags (faux positif → réintégration au leaderboard)
+router.delete("/anomalies/:cluster_id", requireAdmin, async (req, res) => {
+  try {
+    const [r] = await pool.execute(
+      "DELETE FROM vote_flags WHERE cluster_id = ?",
+      [req.params.cluster_id]
+    );
+    res.json({ removed: r.affectedRows });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+// Purge définitive des votes du cluster (suppression de la table votes)
+router.delete("/anomalies/:cluster_id/votes", requireAdmin, async (req, res) => {
+  try {
+    const [flags] = await pool.execute(
+      "SELECT vote_id, table_name FROM vote_flags WHERE cluster_id = ?",
+      [req.params.cluster_id]
+    );
+    const voteIds = flags.filter(f => f.table_name === "votes").map(f => f.vote_id);
+    const catIds = flags.filter(f => f.table_name === "category_votes").map(f => f.vote_id);
+
+    if (voteIds.length) {
+      await pool.query("DELETE FROM votes WHERE id IN (?)", [voteIds]);
+    }
+    if (catIds.length) {
+      await pool.query("DELETE FROM category_votes WHERE id IN (?)", [catIds]);
+    }
+    await pool.execute("DELETE FROM vote_flags WHERE cluster_id = ?", [req.params.cluster_id]);
+
+    res.json({ deleted_votes: voteIds.length, deleted_category_votes: catIds.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+router.post("/sessions/:jti/revoke", requireAdmin, async (req, res) => {
+  try {
+    await revokeVoteSession(req.params.jti);
+    res.json({ revoked: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Erreur serveur" });
+  }
+});
+
+// ─── Stats sécurité agrégées ─────────────────────────────────────────────────
+router.get("/security/stats", requireAdmin, async (_req, res) => {
+  try {
+    const since24h = "DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+    const [[sessActive]] = await pool.execute(
+      "SELECT COUNT(*) AS n FROM vote_sessions WHERE expires_at > NOW() AND revoked = 0"
+    );
+    const [[sessQuota]] = await pool.execute(
+      `SELECT COUNT(*) AS n FROM vote_sessions
+       WHERE created_at > ${since24h} AND vote_count >= max_votes`
+    );
+    const [[flagged]] = await pool.execute(
+      `SELECT COUNT(*) AS n FROM vote_flags WHERE flagged_at > ${since24h}`
+    );
+    const [[clusters]] = await pool.execute(
+      `SELECT COUNT(DISTINCT cluster_id) AS n FROM vote_flags WHERE flagged_at > ${since24h}`
+    );
+    const [byReason] = await pool.execute(
+      `SELECT reason, COUNT(*) AS n FROM bot_attempts
+       WHERE created_at > ${since24h} GROUP BY reason`
+    );
+    const bot_attempts_24h = Object.fromEntries(byReason.map(r => [r.reason, Number(r.n)]));
+
+    res.json({
+      sessions_active: Number(sessActive.n),
+      sessions_quota_exceeded_24h: Number(sessQuota.n),
+      flagged_votes_24h: Number(flagged.n),
+      flagged_clusters_24h: Number(clusters.n),
+      bot_attempts_24h,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message || "Erreur serveur" });
   }
