@@ -185,3 +185,7 @@ export function getSuspiciousStats() {
     totalAttempts: [...suspiciousLog.values()].reduce((acc, v) => acc + v.length, 0),
   };
 }
+
+export function promoteToLongBlock(ipHash, durationMs = 24 * 60 * 60 * 1000) {
+  blockedIps.set(ipHash, { count: 99, blockedUntil: Date.now() + durationMs });
+}
