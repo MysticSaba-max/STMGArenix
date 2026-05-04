@@ -1,9 +1,11 @@
 import { getTurnstileToken } from "./turnstile";
 import { collectBotSignals } from "./botDetection";
+import { signVotePayload } from "./voteSigning";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 const SESSION_COOKIE = "vote_session";
+const SIGNING_KEY_STORAGE = "vote_signing_key";
 
 let cachedFingerprint: string | null = null;
 
@@ -19,6 +21,17 @@ function setSessionToken(token: string) {
 
 function clearSessionToken() {
   document.cookie = `${SESSION_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict`;
+  // sessionStorage est plus sûr que localStorage pour la signing key :
+  // disparaît à la fermeture de l'onglet, limite l'exposition XSS.
+  try { sessionStorage.removeItem(SIGNING_KEY_STORAGE); } catch { /* ignore */ }
+}
+
+function getSigningKey(): string | null {
+  try { return sessionStorage.getItem(SIGNING_KEY_STORAGE); } catch { return null; }
+}
+
+function setSigningKey(key: string) {
+  try { sessionStorage.setItem(SIGNING_KEY_STORAGE, key); } catch { /* ignore */ }
 }
 
 function isSessionError(message: string): boolean {
@@ -45,6 +58,7 @@ async function renewSession(): Promise<boolean> {
     const data = await res.json();
     if (data.sessionToken) {
       setSessionToken(data.sessionToken);
+      if (data.signingKey) setSigningKey(data.signingKey);
       return true;
     }
     return false;
@@ -114,21 +128,48 @@ export const api = {
       getTurnstileToken(),
       collectBotSignals(),
     ]);
-    const result = await request<{ sessionToken: string }>("/votes/verify", {
+    const result = await request<{ sessionToken: string; signingKey?: string }>("/votes/verify", {
       method: "POST",
       body: JSON.stringify({ token: turnstileToken, fingerprint, botSignals }),
     });
     setSessionToken(result.sessionToken);
+    if (result.signingKey) setSigningKey(result.signingKey);
     return result;
   },
 
-  vote: (data: { site_id: number; vote_type: string; fingerprint: string }) =>
-    request<any>("/votes", { method: "POST", body: JSON.stringify(data) }),
-  voteCategories: (data: {
+  vote: async (data: { site_id: number; vote_type: string; fingerprint: string }) => {
+    const signingKey = getSigningKey();
+    if (!signingKey) {
+      // Pas de signing key : on tente une renew via le retry automatique de request().
+      // Si le serveur en mode dev n'exige pas de signature, le request réussira ; sinon
+      // il retournera 400 MISSING_SIG et le caller verra un échec explicite.
+      return request<any>("/votes", { method: "POST", body: JSON.stringify({ ...data, email_confirm: "" }) });
+    }
+    const sig = await signVotePayload(signingKey, data);
+    return request<any>("/votes", {
+      method: "POST",
+      body: JSON.stringify({ ...data, ...sig, email_confirm: "" }),
+    });
+  },
+
+  voteCategories: async (data: {
     site_id: number;
     ratings: Record<string, number>;
     fingerprint: string;
-  }) => request<any>("/votes/categories", { method: "POST", body: JSON.stringify(data) }),
+  }) => {
+    const signingKey = getSigningKey();
+    if (!signingKey) {
+      return request<any>("/votes/categories", {
+        method: "POST",
+        body: JSON.stringify({ ...data, email_confirm: "" }),
+      });
+    }
+    const sig = await signVotePayload(signingKey, data);
+    return request<any>("/votes/categories", {
+      method: "POST",
+      body: JSON.stringify({ ...data, ...sig, email_confirm: "" }),
+    });
+  },
   getMyVotes: (fingerprint: string) =>
     request<any>("/votes/mine", { method: "POST", body: JSON.stringify({ fingerprint }) }),
   getLeaderboard: () => request<any[]>("/leaderboard"),
