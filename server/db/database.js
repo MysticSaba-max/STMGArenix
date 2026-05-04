@@ -105,6 +105,20 @@ export async function initDatabase() {
     )
   `);
 
+  // Table des flags d'anomalie sur les votes
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS vote_flags (
+      vote_id       INT NOT NULL,
+      table_name    ENUM('votes','category_votes') NOT NULL,
+      reason        VARCHAR(60) NOT NULL,
+      cluster_id    CHAR(16) DEFAULT NULL,
+      flagged_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (vote_id, table_name),
+      INDEX idx_cluster (cluster_id),
+      INDEX idx_flagged_at (flagged_at)
+    )
+  `);
+
   // Add ip_hash column if it doesn't exist (migration for existing tables)
   try {
     await pool.execute("ALTER TABLE votes ADD COLUMN ip_hash VARCHAR(255) DEFAULT NULL");
@@ -113,6 +127,13 @@ export async function initDatabase() {
   try {
     await pool.execute("ALTER TABLE category_votes ADD COLUMN ip_hash VARCHAR(255) DEFAULT NULL");
   } catch { /* column already exists */ }
+
+  try {
+    await pool.execute("ALTER TABLE votes ADD INDEX idx_created_at (created_at)");
+  } catch { /* index exists */ }
+  try {
+    await pool.execute("ALTER TABLE category_votes ADD INDEX idx_created_at (created_at)");
+  } catch { /* index exists */ }
 
   // Drop old unique constraints that only used fingerprint
   try {
