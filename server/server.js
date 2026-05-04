@@ -93,6 +93,10 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 // ─── Body parser (limite la taille des requêtes) ─────────────────────────────
+// Important : la limite stricte 2kb pour /api/votes doit être enregistrée AVANT
+// le parser global 50kb. body-parser short-circuit dès que req._body=true, donc
+// si la chaîne match d'abord le 50kb, le 2kb ne s'appliquera jamais.
+app.use("/api/votes", express.json({ limit: "2kb" }));
 app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 
@@ -152,9 +156,6 @@ const uploadLimiter = rateLimit({
   validate: { trustProxy: false, keyGeneratorIpFallback: false },
   message: { error: "Trop d'uploads, réessayez dans 1 minute." },
 });
-
-// ─── Limite stricte du body pour les routes de vote ──────────────────────────
-app.use("/api/votes", express.json({ limit: "2kb" }));
 
 // ─── Application des middlewares globaux ──────────────────────────────────────
 app.use("/api", globalLimiter);

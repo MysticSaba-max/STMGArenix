@@ -75,13 +75,13 @@ router.post("/categories",
     if (!Number.isInteger(siteId) || siteId <= 0 || siteId > 1_000_000) {
       return res.status(400).json({ error: "site_id invalide" });
     }
-    if (!ratings || typeof ratings !== "object") {
-      return res.status(400).json({ error: "ratings requis" });
+    if (!ratings || typeof ratings !== "object" || Array.isArray(ratings)) {
+      return res.status(400).json({ error: "ratings doit être un objet" });
     }
     for (const [category, score] of Object.entries(ratings)) {
       const sNum = Number.parseInt(score, 10);
       if (!VALID_CATEGORIES.includes(category) || !Number.isInteger(sNum) || sNum < 1 || sNum > 5) {
-        return res.status(400).json({ error: `Invalid category or score: ${category}=${score}` });
+        return res.status(400).json({ error: `Catégorie ou score invalide : ${category}=${score}` });
       }
     }
     for (const [category, score] of Object.entries(ratings)) {
