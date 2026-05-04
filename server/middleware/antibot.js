@@ -1,5 +1,5 @@
-import { createHash } from "crypto";
 import { logBotAttempt } from "../services/botActivity.service.js";
+import { hashIp } from "../utils/ipHash.js";
 
 // ─── Patterns d'User-Agent de bots connus ───────────────────────────────────
 const BOT_UA_PATTERNS = [
@@ -75,10 +75,6 @@ const blockedIps = new Map();
 const BLOCK_THRESHOLD = 10;  // tentatives avant blocage temporaire
 const BLOCK_DURATION = 15 * 60 * 1000; // 15 minutes
 
-function hashIp(ip) {
-  return createHash("sha256").update(ip + (process.env.JWT_SECRET || "salt")).digest("hex");
-}
-
 function logSuspicious(ipHash, reason, userAgent = null) {
   if (!suspiciousLog.has(ipHash)) suspiciousLog.set(ipHash, []);
   const log = suspiciousLog.get(ipHash);
@@ -124,7 +120,7 @@ export function detectBot(req, res, next) {
 
   // 2. User-Agent vide ou trop court
   if (!ua || ua.length < 15) {
-    logSuspicious(ipHash, "empty_ua", ua);
+    logSuspicious(ipHash, "empty_ua", ua || null);
     maybeBlock(ipHash);
     return res.status(403).json({ error: "Accès refusé", code: "BOT_DETECTED" });
   }

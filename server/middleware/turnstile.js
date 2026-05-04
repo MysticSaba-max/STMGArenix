@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { logBotAttempt } from "../services/botActivity.service.js";
+import { hashIp } from "../utils/ipHash.js";
 
 dotenv.config();
 
@@ -27,9 +28,8 @@ export async function verifyTurnstile(req, res) {
 
   // Refus immédiat si score bot trop élevé (même sans Turnstile)
   if (botScore >= MAX_ALLOWED_BOT_SCORE) {
-    const ipHash = crypto.createHash("sha256").update(ip).digest("hex");
     logBotAttempt({
-      ipHash,
+      ipHash: hashIp(ip),
       reason: "bot_score_high",
       botScore,
       userAgent: req.headers["user-agent"] || null,

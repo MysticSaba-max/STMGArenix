@@ -1,5 +1,5 @@
-import { createHash } from "crypto";
 import { logBotAttempt } from "../services/botActivity.service.js";
+import { hashIp } from "../utils/ipHash.js";
 
 // ─── API keys vpnapi.io — lues depuis la variable d'environnement ─────────────
 // Définir VPN_API_KEYS dans server/.env (clés séparées par des virgules) :
@@ -49,10 +49,6 @@ const LOCAL_RANGES = [
 
 function isLocalIp(ip) {
   return LOCAL_RANGES.some((r) => r.test(ip));
-}
-
-function hashIp(ip) {
-  return createHash("sha256").update(ip).digest("hex");
 }
 
 async function checkIpReputation(ip) {
@@ -124,9 +120,10 @@ export async function blockVpnProxy(req, res, next) {
 
   try {
     const rep = await checkIpReputation(ip);
+    const ipHash = hashIp(ip);
+    const userAgent = req.headers["user-agent"] || null;
 
     if (rep.isBad) {
-      const ipHash = hashIp(ip);
       const entry = blockCount.get(ipHash) || { count: 0, timestamp: Date.now() };
       entry.count += 1;
       entry.timestamp = Date.now();
@@ -134,11 +131,7 @@ export async function blockVpnProxy(req, res, next) {
     }
 
     if (rep.isTor) {
-      logBotAttempt({
-        ipHash: hashIp(ip),
-        reason: "tor_detected",
-        userAgent: req.headers["user-agent"] || null,
-      }).catch(() => {});
+      logBotAttempt({ ipHash, reason: "tor_detected", userAgent }).catch(() => {});
       return res.status(403).json({
         error: "Accès refusé : réseau Tor détecté. Désactivez Tor pour voter.",
         code: "TOR_DETECTED",
@@ -146,11 +139,7 @@ export async function blockVpnProxy(req, res, next) {
     }
 
     if (rep.isRelay) {
-      logBotAttempt({
-        ipHash: hashIp(ip),
-        reason: "relay_detected",
-        userAgent: req.headers["user-agent"] || null,
-      }).catch(() => {});
+      logBotAttempt({ ipHash, reason: "relay_detected", userAgent }).catch(() => {});
       return res.status(403).json({
         error: "Accès refusé : relay privé détecté (iCloud Private Relay, etc.). Désactivez-le pour voter.",
         code: "RELAY_DETECTED",
@@ -158,11 +147,7 @@ export async function blockVpnProxy(req, res, next) {
     }
 
     if (rep.isProxy) {
-      logBotAttempt({
-        ipHash: hashIp(ip),
-        reason: "proxy_detected",
-        userAgent: req.headers["user-agent"] || null,
-      }).catch(() => {});
+      logBotAttempt({ ipHash, reason: "proxy_detected", userAgent }).catch(() => {});
       return res.status(403).json({
         error: "Accès refusé : proxy détecté. Désactivez votre proxy pour voter.",
         code: "PROXY_DETECTED",
@@ -170,11 +155,7 @@ export async function blockVpnProxy(req, res, next) {
     }
 
     if (rep.isVpn) {
-      logBotAttempt({
-        ipHash: hashIp(ip),
-        reason: "vpn_detected",
-        userAgent: req.headers["user-agent"] || null,
-      }).catch(() => {});
+      logBotAttempt({ ipHash, reason: "vpn_detected", userAgent }).catch(() => {});
       return res.status(403).json({
         error: "Accès refusé : VPN détecté. Désactivez votre VPN pour voter.",
         code: "VPN_DETECTED",
