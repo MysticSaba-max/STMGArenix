@@ -153,6 +153,9 @@ const uploadLimiter = rateLimit({
   message: { error: "Trop d'uploads, réessayez dans 1 minute." },
 });
 
+// ─── Limite stricte du body pour les routes de vote ──────────────────────────
+app.use("/api/votes", express.json({ limit: "2kb" }));
+
 // ─── Application des middlewares globaux ──────────────────────────────────────
 app.use("/api", globalLimiter);
 app.use("/api", detectBot);                // Détection bots UA/headers
