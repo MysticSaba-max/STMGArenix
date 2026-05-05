@@ -34,7 +34,17 @@ function setSigningKey(key: string) {
   try { sessionStorage.setItem(SIGNING_KEY_STORAGE, key); } catch { /* ignore */ }
 }
 
-function isSessionError(message: string): boolean {
+// Codes serveur indiquant qu'une renouvellement de session permettrait au
+// retry de passer (signing key manquante, mismatch fp/IP suite à un refresh,
+// quota atteint, session expirée/révoquée).
+const SESSION_RENEW_CODES = new Set([
+  "NO_SESSION", "BAD_SESSION", "SESSION_EXPIRED", "SESSION_REVOKED",
+  "QUOTA_EXCEEDED", "BINDING_MISMATCH",
+  "MISSING_SIG", "BAD_SIG", "BAD_TS", "NO_KEY",
+]);
+
+function isSessionError(message: string, code?: string): boolean {
+  if (code && SESSION_RENEW_CODES.has(code)) return true;
   return (
     message.includes("Session invalide") ||
     message.includes("Session expirée") ||
@@ -88,8 +98,14 @@ async function request<T>(path: string, options?: RequestInit, _retry = false): 
     const error = await res.json().catch(() => ({ error: "Request failed" }));
     const errorMsg = error.error || "Request failed";
 
-    // Auto-renew session on 403 session errors (one retry)
-    if (res.status === 403 && isSessionError(errorMsg) && !_retry) {
+    // Auto-renew session on session-related errors (one retry).
+    // Inclut 400 MISSING_SIG/BAD_SIG_FORMAT, 403 BAD_SIG/REPLAY/BAD_TS/SESSION_*,
+    // 500 NO_KEY — tous résolus par un nouveau /verify côté client.
+    if (
+      !_retry &&
+      [400, 403, 500].includes(res.status) &&
+      isSessionError(errorMsg, error.code)
+    ) {
       clearSessionToken();
       const renewed = await renewSession();
       if (renewed) {
@@ -115,7 +131,11 @@ export const api = {
   deleteSite: (id: number) =>
     request<void>(`/sites/${id}`, { method: "DELETE" }),
 
-  hasSession: () => !!getSessionToken(),
+  // Vrai uniquement si on a la PAIRE (cookie + signing key). Si la signing key
+  // a disparu (sessionStorage vidé à la fermeture de l'onglet alors que le
+  // cookie persiste 1h), on doit refaire un /verify pour récupérer une signing
+  // key, sinon les votes échoueront avec MISSING_SIG.
+  hasSession: () => !!getSessionToken() && !!getSigningKey(),
   setFingerprint: (fp: string) => {
     cachedFingerprint = fp;
   },
@@ -138,12 +158,21 @@ export const api = {
   },
 
   vote: async (data: { site_id: number; vote_type: string; fingerprint: string }) => {
-    const signingKey = getSigningKey();
+    let signingKey = getSigningKey();
     if (!signingKey) {
-      // Pas de signing key : on tente une renew via le retry automatique de request().
-      // Si le serveur en mode dev n'exige pas de signature, le request réussira ; sinon
-      // il retournera 400 MISSING_SIG et le caller verra un échec explicite.
-      return request<any>("/votes", { method: "POST", body: JSON.stringify({ ...data, email_confirm: "" }) });
+      // Cookie présent mais signing key perdue (tab fermé/rouvert, ou jamais reçue
+      // côté ancien client). On force un /verify pour récupérer une paire fraîche
+      // — sinon le vote échouerait avec MISSING_SIG sans renouvellement utile.
+      const renewed = await renewSession();
+      if (renewed) signingKey = getSigningKey();
+    }
+    if (!signingKey) {
+      // Renouvellement échoué (Turnstile down, score bot trop élevé, etc.) — on
+      // tente quand même : en dev sans TURNSTILE_SECRET le serveur passe sans sig.
+      return request<any>("/votes", {
+        method: "POST",
+        body: JSON.stringify({ ...data, email_confirm: "" }),
+      });
     }
     const sig = await signVotePayload(signingKey, data);
     return request<any>("/votes", {
@@ -157,7 +186,11 @@ export const api = {
     ratings: Record<string, number>;
     fingerprint: string;
   }) => {
-    const signingKey = getSigningKey();
+    let signingKey = getSigningKey();
+    if (!signingKey) {
+      const renewed = await renewSession();
+      if (renewed) signingKey = getSigningKey();
+    }
     if (!signingKey) {
       return request<any>("/votes/categories", {
         method: "POST",
