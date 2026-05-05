@@ -5,12 +5,16 @@
 
 const enc = new TextEncoder();
 
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+// Retourne directement un ArrayBuffer plutôt qu'un Uint8Array pour éviter
+// l'incompatibilité TS 5.7+ entre Uint8Array<ArrayBufferLike> et BufferSource
+// (ArrayBufferView<ArrayBuffer>) attendue par crypto.subtle.importKey/sign.
+function hexToArrayBuffer(hex: string): ArrayBuffer {
+  const buf = new ArrayBuffer(hex.length / 2);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < view.length; i++) {
+    view[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
-  return bytes;
+  return buf;
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -20,7 +24,7 @@ function bytesToHex(bytes: Uint8Array): string {
 async function importKey(hexKey: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     "raw",
-    hexToBytes(hexKey),
+    hexToArrayBuffer(hexKey),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
