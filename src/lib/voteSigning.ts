@@ -31,10 +31,28 @@ async function importKey(hexKey: string): Promise<CryptoKey> {
   );
 }
 
-// Sérialisation canonique : JSON.stringify avec clés triées au top-level.
+// Sérialisation canonique : tri RÉCURSIF des clés à tous les niveaux.
+// Note : utiliser JSON.stringify(obj, sortedKeysArray) ne marche PAS pour les
+// objets imbriqués comme ratings = { pubs: 4, facilite: 5, ... } — l'array
+// replacer filtre les clés à TOUS les niveaux, pas seulement au top-level,
+// et un objet imbriqué dont aucune clé n'est dans le replacer devient {}.
 // Doit MATCHER exactement le canonical() côté serveur (voteSignature.js).
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).sort().reduce<Record<string, unknown>>(
+      (acc, k) => {
+        acc[k] = sortKeysDeep((value as Record<string, unknown>)[k]);
+        return acc;
+      },
+      {},
+    );
+  }
+  return value;
+}
+
 function canonical(obj: Record<string, unknown>): string {
-  return JSON.stringify(obj, Object.keys(obj).sort());
+  return JSON.stringify(sortKeysDeep(obj));
 }
 
 export async function signVotePayload(

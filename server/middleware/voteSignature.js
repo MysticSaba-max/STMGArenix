@@ -18,8 +18,35 @@ setInterval(() => {
   }
 }, 60 * 1000).unref();
 
+// Sérialisation canonique : tri RÉCURSIF des clés à tous les niveaux.
+// Doit matcher EXACTEMENT le canonical() côté client (src/lib/voteSigning.ts).
+// Pourquoi récursif : JSON.stringify(obj, sortedKeysArray) filtre les clés
+// à tous les niveaux et casse les objets imbriqués comme ratings={pubs:4,…}.
+function sortKeysDeep(value) {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value && typeof value === "object") {
+    return Object.keys(value).sort().reduce((acc, k) => {
+      acc[k] = sortKeysDeep(value[k]);
+      return acc;
+    }, {});
+  }
+  return value;
+}
+
 function canonical(obj) {
-  return JSON.stringify(obj, Object.keys(obj).sort());
+  return JSON.stringify(sortKeysDeep(obj));
+}
+
+// Champs ajoutés au body côté client APRÈS signature (honeypot, etc.) — il
+// faut les exclure du canonical sinon le HMAC ne match pas.
+const NON_SIGNED_FIELDS = new Set(["ts", "nonce", "sig", "email_confirm"]);
+
+function stripNonSigned(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!NON_SIGNED_FIELDS.has(k)) out[k] = v;
+  }
+  return out;
 }
 
 export function verifyVoteSignature(req, res, next) {
@@ -57,7 +84,11 @@ export function verifyVoteSignature(req, res, next) {
     return res.status(403).json({ error: "Requête déjà soumise", code: "REPLAY" });
   }
 
-  const payloadToSign = { ...rest, ts: tsNum, nonce };
+  // Strip honeypot et autres champs ajoutés post-signature côté client.
+  // Le honeypot (email_confirm) est déjà géré par honeypotGuard avant nous —
+  // s'il était rempli par un bot on aurait déjà 403'd. Ici on l'exclut juste
+  // pour que le canonical match exactement ce que le client a signé.
+  const payloadToSign = { ...stripNonSigned(rest), ts: tsNum, nonce };
   const expected = createHmac("sha256", Buffer.from(signingKey, "hex"))
     .update(canonical(payloadToSign))
     .digest();
