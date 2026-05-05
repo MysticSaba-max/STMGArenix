@@ -21,6 +21,20 @@ export const tagConfig: Record<UpdateEntry["tag"], TagConfig> = {
 
 export const updates: UpdateEntry[] = [
   {
+    date: "5 mai 2026",
+    tag: "improvement",
+    title: "Forteresse anti-bot",
+    items: [
+      "Chaque vote est désormais signé cryptographiquement (HMAC-SHA-256) — impossible à rejouer ou à forger",
+      "Limite de 16 votes par session vérifiée — 1 captcha résolu = 16 votes maximum, lié à votre appareil et votre réseau",
+      "Détecteur de coordination en arrière-plan — les attaques en masse sont silencieusement neutralisées (les votes apparaissent dans les logs mais n'affectent pas le classement)",
+      "Rate-limit multi-dimensionnel : par appareil, par réseau, par combinaison des deux",
+      "Champ piège invisible dans les formulaires (les bots qui remplissent tout sont bloqués)",
+      "Auto-blocage 24 h des IP qui orchestrent des votes coordonnés",
+      "Headers HTTP durcis (HSTS, COOP, CORP) + version Express masquée",
+    ],
+  },
+  {
     date: "3 mai 2026",
     tag: "improvement",
     title: "STMG TrustScore",
