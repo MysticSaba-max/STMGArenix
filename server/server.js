@@ -102,9 +102,14 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 // ─── Body parser (limite la taille des requêtes) ─────────────────────────────
-// Important : la limite stricte 2kb pour /api/votes doit être enregistrée AVANT
-// le parser global 50kb. body-parser short-circuit dès que req._body=true, donc
-// si la chaîne match d'abord le 50kb, le 2kb ne s'appliquera jamais.
+// Important : les limites spécifiques doivent être enregistrées AVANT le parser
+// global 50kb, car body-parser short-circuit dès que req._body=true. La route
+// la PLUS spécifique vient en premier (sinon le préfixe /api/votes match avant).
+//
+// /api/votes/verify reçoit un token Cloudflare Turnstile (1-3KB) + botSignals
+// → 8KB nécessaires. Les votes eux-mêmes (POST /, /categories, /mine) sont
+// minuscules → 2KB suffit (et bloque les body-bombs).
+app.use("/api/votes/verify", express.json({ limit: "8kb" }));
 app.use("/api/votes", express.json({ limit: "2kb" }));
 app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
@@ -213,7 +218,16 @@ app.use((_req, res) => {
 });
 
 // ─── Gestionnaire d'erreurs global ───────────────────────────────────────────
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
+  // body-parser : payload trop grand → 413 au lieu d'un 500 générique opaque
+  if (err && err.type === "entity.too.large") {
+    console.warn(`[body] payload trop grand sur ${req.path}: ${err.length} > ${err.limit}`);
+    return res.status(413).json({ error: "Requête trop volumineuse", code: "PAYLOAD_TOO_LARGE" });
+  }
+  // body-parser : JSON malformé → 400
+  if (err && err.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "JSON invalide", code: "BAD_JSON" });
+  }
   console.error("Erreur serveur:", err.message || err);
   res.status(500).json({ error: "Erreur serveur interne" });
 });
