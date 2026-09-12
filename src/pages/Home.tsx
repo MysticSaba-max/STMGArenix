@@ -4,7 +4,7 @@ import { api, getAssetUrl } from "@/lib/api";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Trophy, TrendingUp, TrendingDown, Crown, Medal, Award, Loader2, BarChart3, Users } from "lucide-react";
+import { Archive, Trophy, TrendingUp, TrendingDown, Crown, Medal, Award, Loader2, BarChart3, Users } from "lucide-react";
 
 interface LeaderboardEntry {
   id: number;
@@ -82,10 +82,10 @@ function PodiumCard({ site, rank }: { site: LeaderboardEntry; rank: number }) {
 
 export default function Home() {
   useSEO({
-    title: "Classement des Meilleurs Sites de Streaming Gratuit 2026",
-    description: "Découvrez le classement des meilleurs sites de streaming gratuit en 2026. Votez, comparez et trouvez les sites de streaming les plus fiables pour regarder films et séries en ligne gratuitement.",
+    title: "Archive du projet",
+    description: "STMGArenix est arrêté et n’est plus maintenu. Le code source de cette ancienne plateforme de classement communautaire est conservé à titre d’archive sur GitHub.",
     canonical: "/",
-    keywords: "meilleur site de streaming, site de streaming gratuit, streaming gratuit, film streaming, série streaming, comparatif streaming, top streaming 2026, regarder film en ligne, streaming sans inscription, streaming HD, streaming VOSTFR",
+    keywords: "STMGArenix, projet arrêté, archive, code source, GitHub, classement communautaire",
   });
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -107,24 +107,25 @@ export default function Home() {
       <section className="relative hero-gradient grain-overlay overflow-hidden">
         <div className="relative z-10 container mx-auto px-4 py-16 sm:py-24 md:py-32 text-center">
           <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight animate-fade-in-up stagger-1">
-            L'arène du{" "}
+            STMGArenix est{" "}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              streaming
+              arrêté
             </span>
           </h1>
           <p className="mt-4 sm:mt-6 text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in-up stagger-2">
-            Votez, comparez et découvrez les meilleurs sites de streaming
+            Le développement et la maintenance ont pris fin. Merci à toutes les personnes
+            qui ont participé au projet. Le code source est conservé à titre d’archive sur GitHub.
           </p>
           <div className="mt-8 sm:mt-10 flex flex-wrap justify-center gap-3 sm:gap-4 animate-fade-in-up stagger-3">
             <Button asChild size="lg" className="text-base px-8">
-              <Link to="/leaderboard">
-                <Trophy className="w-5 h-5 mr-2" />
-                Voir le classement
-              </Link>
+              <a href="https://github.com/MysticSaba-max/STMGArenix">
+                <Archive className="w-5 h-5 mr-2" />
+                Voir le code sur GitHub
+              </a>
             </Button>
             <Button asChild variant="outline" size="lg" className="text-base px-8">
-              <Link to="/vote">
-                Voter maintenant
+              <Link to="/leaderboard">
+                Consulter le classement
               </Link>
             </Button>
           </div>
@@ -135,10 +136,11 @@ export default function Home() {
       <section className="container mx-auto px-4 py-10 sm:py-16 md:py-24">
         <div className="text-center mb-8 sm:mb-12 scroll-reveal">
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold">
-            Le Podium
+            Dernier classement disponible
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Les trois sites de streaming les mieux notés par la communauté
+            Les données et liens de l’ancien projet peuvent être obsolètes.
+            Leur disponibilité n’est plus garantie.
           </p>
         </div>
 
@@ -159,7 +161,7 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <p className="text-center text-muted-foreground">Pas encore assez de données pour afficher le podium.</p>
+          <p className="text-center text-muted-foreground">Les données du classement ne sont pas disponibles.</p>
         )}
       </section>
 
@@ -197,39 +199,39 @@ export default function Home() {
         <div className="max-w-3xl mx-auto space-y-8">
           <div className="scroll-reveal">
             <h2 className="text-2xl sm:text-3xl font-bold mb-4">
-              Trouvez le meilleur site de streaming gratuit
+              À propos de cette archive
             </h2>
             <p className="text-muted-foreground leading-relaxed">
-              STMGArenix est la plateforme communautaire de référence pour comparer et classer les
-              <strong> meilleurs sites de streaming gratuit</strong> en {new Date().getFullYear()}.
-              Que vous cherchiez un <strong>site de streaming sans pub</strong>, un site avec un
-              <strong> large catalogue de films et séries</strong>, ou simplement le
-              <strong> streaming le plus fiable</strong> avec des liens qui fonctionnent, notre classement
-              mis à jour en temps réel vous aide à trouver la perle rare.
+              STMGArenix était une plateforme communautaire de comparaison et de classement
+              de sites de streaming. Le projet est désormais arrêté : aucune nouvelle fonctionnalité,
+              correction ou assistance n’est prévue. Son code source est conservé sur{" "}
+              <a href="https://github.com/MysticSaba-max/STMGArenix" className="text-primary underline underline-offset-4">
+                GitHub
+              </a>{" "}
+              pour garder une trace du travail réalisé.
             </p>
           </div>
 
           <div className="scroll-reveal">
-            <h3 className="text-xl font-semibold mb-3">Comment fonctionne le classement ?</h3>
+            <h3 className="text-xl font-semibold mb-3">Comment fonctionnait le classement ?</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Notre classement repose entièrement sur les <strong>votes de la communauté</strong>.
-              Chaque utilisateur peut voter pour ou contre un site, et noter les sites selon
+              Le classement reposait sur les <strong>votes de la communauté</strong>.
+              Chaque utilisateur pouvait voter pour ou contre un site, et noter les sites selon
               <strong> 5 catégories</strong> : quantité de publicités, facilité d'utilisation, fiabilité des liens,
-              richesse du catalogue et qualité vidéo. Plus un site reçoit de votes positifs, plus il monte
-              dans le classement.
+              richesse du catalogue et qualité vidéo. Ces votes alimentaient le classement.
             </p>
           </div>
 
           <div className="scroll-reveal">
-            <h3 className="text-xl font-semibold mb-3">Pourquoi utiliser STMGArenix ?</h3>
+            <h3 className="text-xl font-semibold mb-3">Ce que proposait STMGArenix</h3>
             <ul className="text-muted-foreground space-y-2">
               <li className="flex gap-2">
                 <span className="text-primary font-bold">•</span>
-                <span><strong>Classement en temps réel</strong> — Les scores sont mis à jour à chaque vote</span>
+                <span><strong>Classement communautaire</strong> — Les scores évoluaient à chaque vote</span>
               </li>
               <li className="flex gap-2">
                 <span className="text-primary font-bold">•</span>
-                <span><strong>Avis communautaires</strong> — Basé sur les vrais retours des utilisateurs, pas des classements sponsorisés</span>
+                <span><strong>Avis communautaires</strong> — Les utilisateurs partageaient leurs évaluations</span>
               </li>
               <li className="flex gap-2">
                 <span className="text-primary font-bold">•</span>
@@ -237,7 +239,7 @@ export default function Home() {
               </li>
               <li className="flex gap-2">
                 <span className="text-primary font-bold">•</span>
-                <span><strong>Proposez vos sites</strong> — La communauté enrichit le classement en continu</span>
+                <span><strong>Propositions de sites</strong> — La communauté pouvait enrichir le classement</span>
               </li>
             </ul>
           </div>
@@ -251,7 +253,7 @@ export default function Home() {
             STMG<span className="text-primary">Arenix</span>
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Fait avec passion pour le streaming
+            Projet arrêté — code conservé à titre d’archive sur GitHub
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             &copy; {new Date().getFullYear()} STMGArenix

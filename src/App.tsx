@@ -1,44 +1,33 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/hooks/useTheme";
-import { Navbar } from "@/components/layout/Navbar";
-import { GlobalEffects } from "@/components/GlobalEffects";
-import Home from "@/pages/Home";
-import Leaderboard from "@/pages/Leaderboard";
-import Categories from "@/pages/Categories";
-import VotePage from "@/pages/Vote";
-import Admin from "@/pages/Admin";
-import ProposePage from "@/pages/Propose";
-import NotFound from "@/pages/NotFound";
-import Forbidden from "@/pages/Forbidden";
-import ServerError from "@/pages/ServerError";
 
 function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <div className="min-h-screen bg-background">
-          <GlobalEffects />
-          <Navbar />
-          <main>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/leaderboard" element={<Leaderboard />} />
-              <Route path="/categories" element={<Categories />} />
-              <Route path="/vote" element={<VotePage />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/propose" element={<ProposePage />} />
-              <Route path="/403" element={<Forbidden />} />
-              <Route path="/500" element={<ServerError />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-          <footer className="border-t border-border/40 mt-12 py-6 text-center text-xs text-muted-foreground/50">
-            Made with <span className="text-red-500">♥</span> by MysticSaba &amp; VillagersYT
-          </footer>
-          <Toaster richColors position="bottom-right" />
-        </div>
-      </BrowserRouter>
+      <div className="flex min-h-svh flex-col bg-background text-foreground">
+        <main className="flex flex-1 items-center justify-center px-6 py-20">
+          <div className="w-full max-w-2xl text-center">
+            <h1 className="text-4xl font-bold tracking-tight text-primary sm:text-6xl">
+              Projet arrêté.
+            </h1>
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
+              STMGArenix n’est plus développé ni maintenu.
+            </p>
+            <p className="mt-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
+              Son code source est conservé{" "}
+              <a
+                href="https://github.com/MysticSaba-max/STMGArenix"
+                className="font-semibold text-foreground underline underline-offset-4 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              >
+                à titre d’archive sur GitHub
+              </a>.
+            </p>
+          </div>
+        </main>
+        <footer className="px-6 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+          Créé avec <span className="text-red-500">♥</span> par MysticSaba &amp; VillagersYT{" "}
+          (ancien administrateur de Movix et développeur)
+        </footer>
+      </div>
     </ThemeProvider>
   );
 }

@@ -20,8 +20,10 @@ export function useUnseenUpdates() {
     if (!lastSeen) {
       setUnseenCount(updates.length);
     } else {
-      const count = updates.filter((u) => u.date > lastSeen).length;
-      setUnseenCount(count);
+      // La liste est déjà triée de la plus récente à la plus ancienne.
+      // Les dates affichées en français ne se comparent pas comme des dates ISO.
+      const lastSeenIndex = updates.findIndex((u) => u.date === lastSeen);
+      setUnseenCount(lastSeenIndex === -1 ? updates.length : lastSeenIndex);
     }
   }, []);
 

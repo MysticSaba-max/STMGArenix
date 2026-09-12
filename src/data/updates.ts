@@ -1,8 +1,8 @@
-import { Sparkles, Wrench, Bug, type LucideIcon } from "lucide-react";
+import { Archive, Sparkles, Wrench, Bug, type LucideIcon } from "lucide-react";
 
 export interface UpdateEntry {
   date: string;
-  tag: "new" | "improvement" | "fix";
+  tag: "new" | "improvement" | "fix" | "archive";
   title: string;
   items: string[];
 }
@@ -14,12 +14,24 @@ export interface TagConfig {
 }
 
 export const tagConfig: Record<UpdateEntry["tag"], TagConfig> = {
+  archive: { label: "Projet arrêté", icon: Archive, className: "bg-muted text-muted-foreground border-border" },
   new: { label: "Nouveau", icon: Sparkles, className: "bg-green-500/10 text-green-500 border-green-500/20" },
   improvement: { label: "Amélioration", icon: Wrench, className: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
   fix: { label: "Correction", icon: Bug, className: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
 };
 
 export const updates: UpdateEntry[] = [
+  {
+    date: "12 septembre 2026",
+    tag: "archive",
+    title: "Arrêt de STMGArenix",
+    items: [
+      "Le projet est arrêté et n’est plus développé ni maintenu.",
+      "Le code source est conservé à titre d’archive sur GitHub : MysticSaba-max/STMGArenix.",
+      "Aucune nouvelle fonctionnalité, correction ou assistance n’est prévue.",
+      "Merci à toutes les personnes qui ont contribué et participé au projet.",
+    ],
+  },
   {
     date: "5 mai 2026",
     tag: "improvement",

@@ -1,73 +1,42 @@
-# React + TypeScript + Vite
+# STMGArenix — projet arrêté
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **STMGArenix est arrêté et n’est plus maintenu.**
+> Le code source est conservé à titre d’archive sur [GitHub](https://github.com/MysticSaba-max/STMGArenix).
+> Aucune nouvelle fonctionnalité, correction ou assistance n’est prévue.
 
-Currently, two official plugins are available:
+Le site affiche uniquement une page d’arrêt, sans appel à l’API ni chargement du CAPTCHA. Le code de l’ancienne plateforme reste conservé dans ce dépôt à titre historique.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Merci à toutes les personnes qui ont contribué au projet, voté et participé à la communauté.
 
-## React Compiler
+## À propos du projet
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+STMGArenix était une plateforme communautaire de classement et de comparaison de sites de streaming. Elle proposait :
 
-## Expanding the ESLint configuration
+- Un classement alimenté par les votes de la communauté.
+- Une notation selon cinq critères : publicités, facilité d’utilisation, fiabilité des liens, catalogue et qualité vidéo.
+- Un système de proposition de sites et une interface d’administration.
+- Des protections contre les votes automatisés et les abus.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Les données et liens de l’ancienne plateforme peuvent être obsolètes. La disponibilité des services associés n’est plus garantie.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Sécurité de l’historique
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Trois anciennes clés API VPNAPI.io figurent dans l’historique Git. **Ces clés ont été révoquées** et retirées du code actuel. Elles ne doivent pas être réutilisées.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Contenu de l’archive
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+| Dossier | Contenu |
+| --- | --- |
+| `src/` | Interface React et TypeScript, construite avec Vite et Tailwind CSS |
+| `server/` | API Node.js / Express et accès à la base MySQL |
+| `public/` | Ressources statiques du site |
+| `docs/` | Documents de conception et plans historiques |
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Les documents conservés décrivent le développement passé et ne constituent pas une feuille de route active :
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- [Conception des protections anti-bot](docs/superpowers/specs/2026-05-04-anti-bot-hardening-design.md)
+- [Plan historique d’implémentation](docs/superpowers/plans/2026-05-04-anti-bot-hardening.md)
+
+## Auteurs
+
+Projet créé par **MysticSaba** et **VillagersYT** (ancien administrateur de Movix et développeur).

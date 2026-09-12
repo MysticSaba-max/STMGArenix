@@ -34,7 +34,7 @@ function setCanonical(url: string) {
 
 export function useSEO({ title, description, canonical, ogType = "website", keywords }: SEOOptions) {
   useEffect(() => {
-    const fullTitle = `${title} | ${SITE_NAME}`;
+    const fullTitle = `${title} | ${SITE_NAME} — projet arrêté`;
     document.title = fullTitle;
 
     setMetaTag("description", description);
@@ -59,7 +59,7 @@ export function useSEO({ title, description, canonical, ogType = "website", keyw
     setMetaTag("twitter:description", description);
 
     return () => {
-      document.title = `${SITE_NAME} - Classement des Meilleurs Sites de Streaming Gratuit 2026`;
+      document.title = `${SITE_NAME} — projet arrêté`;
     };
   }, [title, description, canonical, ogType, keywords]);
 }
